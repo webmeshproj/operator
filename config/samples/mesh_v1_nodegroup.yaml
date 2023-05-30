@@ -1,0 +1,5 @@
+apiVersion: mesh.webmesh.io/v1
+kind: NodeGroup
+metadata:
+  name: nodegroup-sample
+spec: {}

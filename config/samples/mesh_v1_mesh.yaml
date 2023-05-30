@@ -1,0 +1,11 @@
+apiVersion: mesh.webmesh.io/v1
+kind: Mesh
+metadata:
+  name: mesh-sample
+spec:
+  issuer:
+    create: true
+  bootstrap:
+    replicas: 3
+    config:
+      logLevel: debug

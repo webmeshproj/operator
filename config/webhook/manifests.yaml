@@ -1,0 +1,94 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-mesh-webmesh-io-v1-mesh
+  failurePolicy: Fail
+  name: mmesh.kb.io
+  rules:
+  - apiGroups:
+    - mesh.webmesh.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - meshes
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-mesh-webmesh-io-v1-nodegroup
+  failurePolicy: Fail
+  name: mnodegroup.kb.io
+  rules:
+  - apiGroups:
+    - mesh.webmesh.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nodegroups
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  creationTimestamp: null
+  name: validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-mesh-webmesh-io-v1-mesh
+  failurePolicy: Fail
+  name: vmesh.kb.io
+  rules:
+  - apiGroups:
+    - mesh.webmesh.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - meshes
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-mesh-webmesh-io-v1-nodegroup
+  failurePolicy: Fail
+  name: vnodegroup.kb.io
+  rules:
+  - apiGroups:
+    - mesh.webmesh.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - nodegroups
+  sideEffects: None
