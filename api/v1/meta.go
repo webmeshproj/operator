@@ -126,6 +126,11 @@ func MeshNodeGroupHeadlessServiceName(mesh *Mesh, group *NodeGroup) string {
 	return fmt.Sprintf("%s-%s", mesh.GetName(), group.GetName())
 }
 
+// MeshNodeGroupLBName returns the name of the LB Service for the given Mesh node group.
+func MeshNodeGroupLBName(mesh *Mesh, group *NodeGroup) string {
+	return fmt.Sprintf("%s-%s-lb", mesh.GetName(), group.GetName())
+}
+
 // MeshLabels returns the labels for the given Mesh.
 func MeshLabels(mesh *Mesh) map[string]string {
 	labels := mesh.GetLabels()
@@ -160,5 +165,19 @@ func NodeGroupSelector(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := MeshSelector(mesh)
 	labels[NodeGroupNameLabel] = group.GetName()
 	labels[NodeGroupNamespaceLabel] = group.GetNamespace()
+	return labels
+}
+
+// NodeGroupLBLabels returns the labels for the given Mesh node group's LB Service.
+func NodeGroupLBLabels(mesh *Mesh, group *NodeGroup) map[string]string {
+	labels := NodeGroupLabels(mesh, group)
+	labels[NodeGroupLBLabel] = "true"
+	return labels
+}
+
+// NodeGroupLBSelector returns the selector for the given Mesh node group's LB Service.
+func NodeGroupLBSelector(mesh *Mesh, group *NodeGroup) map[string]string {
+	labels := NodeGroupSelector(mesh, group)
+	labels[NodeGroupLBLabel] = "true"
 	return labels
 }

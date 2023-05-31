@@ -38,7 +38,7 @@ type MeshReconciler struct {
 }
 
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers;certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=meshes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=meshes/status,verbs=get;update;patch
@@ -59,6 +59,7 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	log.Info("Reconciling Mesh")
 	toApply := make([]client.Object, 0)
+
 	// Create an issuer if requested
 	if mesh.Spec.Issuer.Create {
 		toApply = append(toApply,
@@ -67,19 +68,32 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			resources.NewMeshIssuer(&mesh),
 		)
 	}
+
 	// Configure the bootstrap group
 	bootstrapGroup := mesh.BootstrapGroup()
-	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, bootstrapGroup))
+	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, bootstrapGroup, &mesh))
 	for i := 0; i < int(bootstrapGroup.Spec.Replicas); i++ {
-		toApply = append(toApply, resources.NewNodeCertificate(&mesh, bootstrapGroup, i))
+		toApply = append(toApply, resources.NewNodeCertificate(&mesh, bootstrapGroup, &mesh, i))
 	}
-	configMap, err := resources.NewNodeGroupConfigMap(&mesh, bootstrapGroup, true)
+	configMap, err := resources.NewNodeGroupConfigMap(&mesh, bootstrapGroup, &mesh, true)
 	if err != nil {
 		log.Error(err, "unable to create config map")
 		return ctrl.Result{}, err
 	}
-	checksum := configMap.GetAnnotations()[meshv1.NodeGroupConfigChecksumAnnotation]
-	toApply = append(toApply, configMap, resources.NewNodeGroupStatefulSet(&mesh, bootstrapGroup, checksum))
+	checksum := configMap.GetAnnotations()[meshv1.ConfigChecksumAnnotation]
+	toApply = append(toApply, configMap,
+		resources.NewNodeGroupStatefulSet(&mesh, bootstrapGroup, &mesh, checksum))
+
+	if bootstrapGroup.Spec.Service != nil {
+		lbconfig, err := resources.NewNodeGroupLBConfigMap(&mesh, bootstrapGroup, &mesh)
+		if err != nil {
+			log.Error(err, "unable to create config map")
+			return ctrl.Result{}, err
+		}
+		toApply = append(toApply, lbconfig,
+			resources.NewNodeGroupLBDeployment(&mesh, bootstrapGroup, &mesh),
+			resources.NewNodeGroupLBService(&mesh, bootstrapGroup, &mesh))
+	}
 
 	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
 		log.Error(err, "unable to apply resources")

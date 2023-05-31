@@ -26,12 +26,13 @@ import (
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
 // NewNodeGroupConfigMap returns a new ConfigMap for a NodeGroup.
-func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, isBootstrap bool) (*corev1.ConfigMap, error) {
+func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, isBootstrap bool) (*corev1.ConfigMap, error) {
 	groupcfg := group.Spec.Config
 	if group.Spec.ConfigGroup != "" {
 		if mesh.Spec.ConfigGroups == nil {
@@ -97,7 +98,7 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, isBootstr
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
-	annotations[meshv1.NodeGroupConfigChecksumAnnotation] = checksum(out)
+	annotations[meshv1.ConfigChecksumAnnotation] = checksum(out)
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -107,8 +108,77 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, isBootstr
 			Name:            meshv1.MeshNodeGroupConfigMapName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
-			Annotations:     group.GetAnnotations(),
-			OwnerReferences: meshv1.OwnerReferences(mesh),
+			Annotations:     annotations,
+			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+		},
+		Data: map[string]string{
+			"config.yaml": string(out),
+		},
+	}, nil
+}
+
+func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) (*corev1.ConfigMap, error) {
+	cfg := map[string]map[string]any{
+		"tcp": make(map[string]any),
+		"udp": make(map[string]any),
+	}
+	cfg["tcp"]["routers"] = map[string]any{
+		"grpc": map[string]any{
+			"entryPoints": []string{"grpc"},
+			"rule":        "HostSNI(`*`)",
+			"service":     "grpc",
+			"tls":         map[string]any{"passthrough": true},
+		},
+	}
+	cfg["tcp"]["services"] = map[string]any{
+		"grpc": map[string]any{
+			"loadBalancer": map[string]any{
+				"servers": []map[string]any{
+					{"address": fmt.Sprintf(`%s:%d`,
+						meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultGRPCPort)},
+				},
+			},
+		},
+	}
+	udprouters := make(map[string]any)
+	udpservices := make(map[string]any)
+	for i := 0; i < int(group.Spec.Replicas); i++ {
+		udprouters[fmt.Sprintf("wg%d", i)] = map[string]any{
+			"entryPoints": []string{fmt.Sprintf("wg%d", i)},
+			"service":     fmt.Sprintf("wg%d", i),
+		}
+		udpservices[fmt.Sprintf("wg%d", i)] = map[string]any{
+			"loadBalancer": map[string]any{
+				"servers": []map[string]any{
+					{"address": fmt.Sprintf(`%s:%d`,
+						meshv1.MeshNodeClusterFQDN(mesh, group, i), meshv1.DefaultWireGuardPort)},
+				},
+			},
+		}
+
+	}
+	cfg["udp"]["routers"] = udprouters
+	cfg["udp"]["services"] = udpservices
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
+	annotations := group.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[meshv1.ConfigChecksumAnnotation] = checksum(out)
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: corev1.SchemeGroupVersion.String(),
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            meshv1.MeshNodeGroupLBName(mesh, group),
+			Namespace:       group.GetNamespace(),
+			Labels:          meshv1.NodeGroupLBLabels(mesh, group),
+			Annotations:     annotations,
+			OwnerReferences: meshv1.OwnerReferences(ownedBy),
 		},
 		Data: map[string]string{
 			"config.yaml": string(out),

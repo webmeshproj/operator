@@ -23,12 +23,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
 // NewNodeGroupStatefulSet returns a new StatefulSet for a NodeGroup.
-func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configChecksum string) *appsv1.StatefulSet {
+func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, configChecksum string) *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -38,7 +39,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 			Name:            meshv1.MeshNodeGroupStatefulSetName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
-			OwnerReferences: meshv1.OwnerReferences(mesh),
+			OwnerReferences: meshv1.OwnerReferences(ownedBy),
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: Pointer(group.Spec.Replicas),
@@ -78,7 +79,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 						if annotations == nil {
 							annotations = map[string]string{}
 						}
-						annotations[meshv1.NodeGroupConfigChecksumAnnotation] = configChecksum
+						annotations[meshv1.ConfigChecksumAnnotation] = configChecksum
 						return annotations
 					}(),
 				},

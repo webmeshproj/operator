@@ -3,9 +3,12 @@ kind: Mesh
 metadata:
   name: mesh-sample
 spec:
+  ipv4: 10.254.0.0/16
   issuer:
     create: true
   bootstrap:
     replicas: 3
+    service:
+      type: LoadBalancer
     config:
       logLevel: debug

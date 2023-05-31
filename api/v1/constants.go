@@ -19,6 +19,8 @@ package v1
 const (
 	// DefaultNodeImage is the default image to use for nodes.
 	DefaultNodeImage = "ghcr.io/webmeshproj/node:latest"
+	// DefaultNodeLBImage is the default image to use for node load balancers.
+	DefaultNodeLBImage = "traefik:v3.0"
 	// DefaultRaftPort is the default port to use for Raft.
 	DefaultRaftPort = 9443
 	// DefaultGRPCPort is the default port to use for gRPC.
@@ -41,6 +43,8 @@ const (
 	NodeGroupNameLabel = "webmesh.io/nodegroup-name"
 	// NodeGroupNamespaceLabel is the label to use for the NodeGroup namespace.
 	NodeGroupNamespaceLabel = "webmesh.io/nodegroup-namespace"
-	// NodeGroupConfigChecksumAnnotation is the annotation to use for the NodeGroup config checksum.
-	NodeGroupConfigChecksumAnnotation = "webmesh.io/nodegroup-config-checksum"
+	// NodeGroupLBLabel is the label to use for the NodeGroup load balancer.
+	NodeGroupLBLabel = "webmesh.io/nodegroup-lb"
+	// ConfigChecksumAnnotation is the annotation to use for configmap checksums.
+	ConfigChecksumAnnotation = "webmesh.io/config-checksum"
 )

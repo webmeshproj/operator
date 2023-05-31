@@ -5376,20 +5376,10 @@ spec:
                       type: string
                     description: Annotations are the annotations to use for the service.
                     type: object
-                  expose:
-                    default: false
-                    description: Expose is whether to expose this group of nodes.
-                    type: boolean
                   grpcPort:
                     default: 8443
                     description: GRPCPort is the GRPC port to expose. This is used
                       for communication between clients and nodes.
-                    format: int32
-                    type: integer
-                  raftPort:
-                    default: 9443
-                    description: RaftPort is the raft port to expose. This is used
-                      for communication between nodes.
                     format: int32
                     type: integer
                   type:
@@ -5398,8 +5388,10 @@ spec:
                     type: string
                   wireGuardPort:
                     default: 51820
-                    description: WireGuardPort is the WireGuard port to expose. This
-                      is used for communication between nodes.
+                    description: WireGuardPort is the starting WireGuard port to expose.
+                      This is used for communication between nodes. Each node will
+                      have an external WireGuard port assigned to it starting from
+                      this port.
                     format: int32
                     type: integer
                 type: object

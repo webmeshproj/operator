@@ -151,7 +151,8 @@ func (c *NodeGroupConfig) Default() {
 
 // Merge merges the given NodeGroupConfig into this NodeGroupConfig. The
 // given NodeGroupConfig takes precedence. The merged NodeGroupConfig is
-// returned for convenience.
+// returned for convenience. If both are nil, a default NodeGroupConfig is
+// returned.
 func (c *NodeGroupConfig) Merge(in *NodeGroupConfig) *NodeGroupConfig {
 	if in == nil && c == nil {
 		var empty NodeGroupConfig
@@ -175,21 +176,10 @@ func (c *NodeGroupConfig) Merge(in *NodeGroupConfig) *NodeGroupConfig {
 
 // NodeGroupServiceConfig defines the configurations for exposing a group of nodes.
 type NodeGroupServiceConfig struct {
-	// Expose is whether to expose this group of nodes.
-	// +kubebuilder:default:=false
-	// +optional
-	Expose bool `json:"expose,omitempty"`
-
 	// Type is the type of service to expose.
 	// +kubebuilder:default:="ClusterIP"
 	// +optional
 	Type corev1.ServiceType `json:"type,omitempty"`
-
-	// RaftPort is the raft port to expose. This is used for communication
-	// between nodes.
-	// +kubebuilder:default:=9443
-	// +optional
-	RaftPort int32 `json:"raftPort,omitempty"`
 
 	// GRPCPort is the GRPC port to expose. This is used for communication
 	// between clients and nodes.
@@ -197,8 +187,9 @@ type NodeGroupServiceConfig struct {
 	// +optional
 	GRPCPort int32 `json:"grpcPort,omitempty"`
 
-	// WireGuardPort is the WireGuard port to expose. This is used for
-	// communication between nodes.
+	// WireGuardPort is the starting WireGuard port to expose. This is used
+	// for communication between nodes. Each node will have an external WireGuard
+	// port assigned to it starting from this port.
 	// +kubebuilder:default:=51820
 	// +optional
 	WireGuardPort int32 `json:"wireGuardPort,omitempty"`
@@ -206,6 +197,18 @@ type NodeGroupServiceConfig struct {
 	// Annotations are the annotations to use for the service.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+func (c *NodeGroupServiceConfig) Default() {
+	if c.Type == "" {
+		c.Type = corev1.ServiceTypeClusterIP
+	}
+	if c.GRPCPort == 0 {
+		c.GRPCPort = 8443
+	}
+	if c.WireGuardPort == 0 {
+		c.WireGuardPort = 51820
+	}
 }
 
 // NodeGroupStatus defines the observed state of NodeGroup

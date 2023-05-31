@@ -65,6 +65,9 @@ func (r *Mesh) Default() {
 			},
 		}
 	}
+	if r.Spec.Bootstrap.Service != nil {
+		r.Spec.Bootstrap.Service.Default()
+	}
 
 	// Set the issuer name if we are creating it
 	if r.Spec.Issuer.Create {
