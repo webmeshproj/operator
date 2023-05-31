@@ -55,6 +55,21 @@ func MeshCAHostname(mesh *Mesh) string {
 	return fmt.Sprintf("%s-ca.webmesh.internal", mesh.GetName())
 }
 
+// MeshAdminCertName returns the name of the admin certificate for the given Mesh.
+func MeshAdminCertName(mesh *Mesh) string {
+	return fmt.Sprintf("%s-admin", mesh.GetName())
+}
+
+// MeshAdminConfigName returns the name of the admin config for the given Mesh.
+func MeshAdminConfigName(mesh *Mesh) string {
+	return fmt.Sprintf("%s-admin-config", mesh.GetName())
+}
+
+// MeshAdminHostname returns the hostname for the given Mesh admin.
+func MeshAdminHostname(mesh *Mesh) string {
+	return fmt.Sprintf("%s-admin.webmesh.internal", mesh.GetName())
+}
+
 // MeshSelfSignerRef returns a reference to the self-signer for the given Mesh.
 func MeshSelfSignerRef(mesh *Mesh) cmmeta.ObjectReference {
 	return cmmeta.ObjectReference{

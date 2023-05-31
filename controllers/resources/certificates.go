@@ -52,6 +52,34 @@ func NewMeshCACertificate(mesh *meshv1.Mesh) *certv1.Certificate {
 	}
 }
 
+// NewMeshAdminCertificate returns a new TLS certificate for a Mesh admin.
+func NewMeshAdminCertificate(mesh *meshv1.Mesh) *certv1.Certificate {
+	return &certv1.Certificate{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: certv1.SchemeGroupVersion.String(),
+			Kind:       "Certificate",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            meshv1.MeshAdminCertName(mesh),
+			Namespace:       mesh.GetNamespace(),
+			Labels:          meshv1.MeshLabels(mesh),
+			OwnerReferences: meshv1.OwnerReferences(mesh),
+		},
+		Spec: certv1.CertificateSpec{
+			CommonName: meshv1.MeshAdminHostname(mesh),
+			SecretName: meshv1.MeshAdminCertName(mesh),
+			Usages: []certv1.KeyUsage{
+				certv1.UsageDigitalSignature,
+				certv1.UsageKeyEncipherment,
+				certv1.UsageServerAuth,
+				certv1.UsageClientAuth,
+			},
+			PrivateKey: &meshv1.DefaultTLSKeyConfig,
+			IssuerRef:  mesh.IssuerReference(),
+		},
+	}
+}
+
 // NewNodeCertificate returns a new TLS certificate for a Mesh node.
 func NewNodeCertificate(mesh *meshv1.Mesh, nodeGroup *meshv1.NodeGroup, ownedBy client.Object, index int) *certv1.Certificate {
 	return &certv1.Certificate{

@@ -6,7 +6,7 @@ require (
 	github.com/cert-manager/cert-manager v1.12.1
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
-	github.com/webmeshproj/node v0.0.0-20230530225043-3048c640d5f5
+	github.com/webmeshproj/node v0.0.0-20230531150907-01a0561eaf01
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.27.2
 	k8s.io/apimachinery v0.27.2
@@ -100,7 +100,7 @@ require (
 	github.com/stretchr/testify v1.8.3 // indirect
 	github.com/vishvananda/netlink v1.0.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
-	github.com/webmeshproj/api v0.0.0-20230530111959-5c5b7a2dc719 // indirect
+	github.com/webmeshproj/api v0.0.0-20230531001944-f923d019d4fe // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
