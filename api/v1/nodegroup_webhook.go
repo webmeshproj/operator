@@ -18,6 +18,7 @@ package v1
 
 import (
 	"context"
+	"errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -78,6 +79,10 @@ func (r *nodeGroupValidator) ValidateCreate(ctx context.Context, obj runtime.Obj
 func (r *nodeGroupValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	o := oldObj.(*NodeGroup)
 	nodegrouplog.Info("validating update", "name", o.Name)
+	if val, ok := o.GetAnnotations()[BootstrapNodeGroupAnnotation]; ok && val == "true" {
+		// Bootstrap group can only be mutated by the controller
+		return nil, errors.New("bootstrap node groups can only be mutated by the Mesh controller")
+	}
 	return nil, nil
 }
 
@@ -85,5 +90,9 @@ func (r *nodeGroupValidator) ValidateUpdate(ctx context.Context, oldObj, newObj 
 func (r *nodeGroupValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	o := obj.(*NodeGroup)
 	nodegrouplog.Info("validating delete", "name", o.Name)
+	if val, ok := o.GetAnnotations()[BootstrapNodeGroupAnnotation]; ok && val == "true" {
+		// Bootstrap group can only be mutated by the controller
+		return nil, errors.New("bootstrap node groups can only be deleted by the Mesh controller")
+	}
 	return nil, nil
 }
