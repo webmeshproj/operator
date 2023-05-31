@@ -31,7 +31,7 @@ import (
 
 // NewNodeGroupLBDeployment returns a new Deployment for routing external traffic
 // to a node group.
-func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) *appsv1.Deployment {
+func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, configChecksum string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -50,6 +50,9 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: meshv1.NodeGroupLBLabels(mesh, group),
+					Annotations: map[string]string{
+						meshv1.ConfigChecksumAnnotation: configChecksum,
+					},
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{

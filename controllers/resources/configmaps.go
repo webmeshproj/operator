@@ -31,21 +31,41 @@ import (
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
+// NodeGroupConfigOptions are options for generating a node group config.
+type NodeGroupConfigOptions struct {
+	// Mesh is the mesh.
+	Mesh *meshv1.Mesh
+	// Group is the node group.
+	Group *meshv1.NodeGroup
+	// OwnedBy is the object that owns the config.
+	OwnedBy client.Object
+	// IsBootstrap is true if this is the bootstrap node group.
+	IsBootstrap bool
+	// ExternalEndpoint is the external endpoint for the node group.
+	ExternalEndpoint string
+}
+
 // NewNodeGroupConfigMap returns a new ConfigMap for a NodeGroup.
-func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, isBootstrap bool) (*corev1.ConfigMap, error) {
+func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, csum string, err error) {
+	group := opts.Group
+	mesh := opts.Mesh
+
+	// Merge config group if specified
 	groupcfg := group.Spec.Config
 	if group.Spec.ConfigGroup != "" {
 		if mesh.Spec.ConfigGroups == nil {
-			return nil, fmt.Errorf("config group %s not found", group.Spec.ConfigGroup)
+			return nil, "", fmt.Errorf("config group %s not found", group.Spec.ConfigGroup)
 		}
 		configGroup, ok := mesh.Spec.ConfigGroups[group.Spec.ConfigGroup]
 		if !ok {
-			return nil, fmt.Errorf("config group %s not found", group.Spec.ConfigGroup)
+			return nil, "", fmt.Errorf("config group %s not found", group.Spec.ConfigGroup)
 		}
 		groupcfg = configGroup.Merge(groupcfg)
 	}
-	opts := nodecmd.NewOptions()
-	opts.Global = &global.Options{
+	nodeopts := nodecmd.NewOptions()
+
+	// Global options
+	nodeopts.Global = &global.Options{
 		LogLevel:        groupcfg.LogLevel,
 		TLSCertFile:     fmt.Sprintf(`%s/{{ env "POD_NAME" }}/tls.crt`, meshv1.DefaultTLSDirectory),
 		TLSKeyFile:      fmt.Sprintf(`%s/{{ env "POD_NAME" }}/tls.key`, meshv1.DefaultTLSDirectory),
@@ -54,21 +74,32 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy c
 		VerifyChainOnly: mesh.Spec.Issuer.Create,
 		NoIPv6:          groupcfg.NoIPv6,
 	}
-	// TODO: Technically only when we are exposing the node group as a service.
-	// Also need to support the endpoints from any load balancers created.
-	opts.Store.NodeEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`,
-		meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
-	opts.Store.NodeWireGuardEndpoints = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
+
+	// Endpoint and zone awareness options
+	nodeopts.Store.ZoneAwarenessID = group.GetName()
+	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
 		meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort)
-	// TODO: make this configurable
-	opts.Store.ZoneAwarenessID = group.GetName()
-	if isBootstrap {
-		opts.Store.Bootstrap = true
-		opts.Store.BootstrapWithRaftACLs = true
-		opts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
-		opts.Services.EnableLeaderProxy = true
+	wgendpoints := []string{internalEndpoint}
+	if opts.ExternalEndpoint != "" {
+		nodeopts.Store.NodeEndpoint = opts.ExternalEndpoint
+		wgep := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`,
+			opts.ExternalEndpoint, meshv1.DefaultDataDirectory, group.Spec.Service.WireGuardPort)
+		wgendpoints = append(wgendpoints, wgep)
+	} else if opts.IsBootstrap {
+		// We need to at least use the internal endpoint for the bootstrap node group
+		nodeopts.Store.NodeEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`,
+			meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
+	}
+	nodeopts.Store.NodeWireGuardEndpoints = strings.Join(wgendpoints, ",")
+
+	// Bootstrap options
+	if opts.IsBootstrap {
+		nodeopts.Store.Bootstrap = true
+		nodeopts.Store.BootstrapWithRaftACLs = true
+		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
+		nodeopts.Services.EnableLeaderProxy = true
 		if group.Spec.Replicas > 1 {
-			opts.Store.Options.AdvertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
+			nodeopts.Store.Options.AdvertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
 				meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultRaftPort)
 			var bootstrapServers strings.Builder
 			for i := 0; i < int(group.Spec.Replicas); i++ {
@@ -81,24 +112,29 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy c
 					bootstrapServers.WriteString(",")
 				}
 			}
-			opts.Store.Options.BootstrapServers = bootstrapServers.String()
+			nodeopts.Store.Options.BootstrapServers = bootstrapServers.String()
 		}
 	}
+
+	// Storage options
 	if group.Spec.PVCSpec != nil {
-		opts.Store.Options.DataDir = meshv1.DefaultDataDirectory
+		nodeopts.Store.Options.DataDir = meshv1.DefaultDataDirectory
 	} else {
-		opts.Store.Options.DataDir = ""
-		opts.Store.Options.InMemory = true
+		nodeopts.Store.Options.DataDir = ""
+		nodeopts.Store.Options.InMemory = true
 	}
-	out, err := yaml.Marshal(opts)
+
+	// Build the config
+	out, err := yaml.Marshal(nodeopts)
 	if err != nil {
-		return nil, fmt.Errorf("marshal config: %w", err)
+		return nil, "", fmt.Errorf("marshal config: %w", err)
 	}
 	annotations := group.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
-	annotations[meshv1.ConfigChecksumAnnotation] = checksum(out)
+	csum = checksum(out)
+	annotations[meshv1.ConfigChecksumAnnotation] = csum
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -109,15 +145,15 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy c
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
 			Annotations:     annotations,
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(opts.OwnedBy),
 		},
 		Data: map[string]string{
 			"config.yaml": string(out),
 		},
-	}, nil
+	}, csum, nil
 }
 
-func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) (*corev1.ConfigMap, error) {
+func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) (cm *corev1.ConfigMap, csum string, err error) {
 	cfg := map[string]map[string]any{
 		"tcp": make(map[string]any),
 		"udp": make(map[string]any),
@@ -161,13 +197,14 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 	cfg["udp"]["services"] = udpservices
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal config: %w", err)
+		return nil, "", fmt.Errorf("marshal config: %w", err)
 	}
 	annotations := group.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
-	annotations[meshv1.ConfigChecksumAnnotation] = checksum(out)
+	csum = checksum(out)
+	annotations[meshv1.ConfigChecksumAnnotation] = csum
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -183,10 +220,9 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 		Data: map[string]string{
 			"config.yaml": string(out),
 		},
-	}, nil
+	}, csum, nil
 }
 
 func checksum(data []byte) string {
-	out := crc32.ChecksumIEEE(data)
-	return fmt.Sprintf("%x", out)
+	return fmt.Sprintf("%x", crc32.ChecksumIEEE(data))
 }

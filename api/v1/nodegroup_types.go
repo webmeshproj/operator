@@ -197,6 +197,11 @@ type NodeGroupServiceConfig struct {
 	// Annotations are the annotations to use for the service.
 	// +optional
 	Annotations map[string]string `json:"annotations,omitempty"`
+
+	// ExternalURL is the external URL to broadcast for this service.
+	// If left unset it will be generated from the service IP.
+	// +optional
+	ExternalURL string `json:"externalURL,omitempty"`
 }
 
 func (c *NodeGroupServiceConfig) Default() {

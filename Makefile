@@ -202,3 +202,8 @@ restart-operator:
 
 destroy-k3d:
 	k3d cluster delete $(CLUSTER_NAME)
+
+get-config:
+	$(KUBECTL) get secret mesh-sample-admin-config -o json \
+		| jq '.data | map_values(@base64d)' \
+		| jq -r '.["config.yaml"]' > config.yaml

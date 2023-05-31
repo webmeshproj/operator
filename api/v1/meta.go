@@ -67,7 +67,7 @@ func MeshAdminConfigName(mesh *Mesh) string {
 
 // MeshAdminHostname returns the hostname for the given Mesh admin.
 func MeshAdminHostname(mesh *Mesh) string {
-	return fmt.Sprintf("%s-admin.webmesh.internal", mesh.GetName())
+	return fmt.Sprintf("%s-admin", mesh.GetName())
 }
 
 // MeshSelfSignerRef returns a reference to the self-signer for the given Mesh.
@@ -85,7 +85,7 @@ func MeshNodeCertName(mesh *Mesh, group *NodeGroup, index int) string {
 
 // MeshNodeHostname returns the hostname for the given Mesh node.
 func MeshNodeHostname(mesh *Mesh, group *NodeGroup, index int) string {
-	return fmt.Sprintf("%s.webmesh.internal", MeshNodeGroupPodName(mesh, group, index))
+	return MeshNodeGroupPodName(mesh, group, index)
 }
 
 // MeshNodeDNSNames returns the DNS names for the given Mesh node.

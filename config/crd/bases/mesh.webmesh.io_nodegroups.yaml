@@ -5376,6 +5376,11 @@ spec:
                       type: string
                     description: Annotations are the annotations to use for the service.
                     type: object
+                  externalURL:
+                    description: ExternalURL is the external URL to broadcast for
+                      this service. If left unset it will be generated from the service
+                      IP.
+                    type: string
                   grpcPort:
                     default: 8443
                     description: GRPCPort is the GRPC port to expose. This is used

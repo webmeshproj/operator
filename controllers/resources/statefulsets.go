@@ -85,7 +85,24 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 				},
 				Spec: corev1.PodSpec{
 					ImagePullSecrets: group.Spec.ImagePullSecrets,
-					InitContainers:   group.Spec.InitContainers,
+					InitContainers: append([]corev1.Container{
+						{
+							Name:            "write-ordinal",
+							Image:           "busybox",
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Command: []string{
+								"sh",
+								"-c",
+								fmt.Sprintf("echo ${HOSTNAME##*-} > %s/ordinal", meshv1.DefaultDataDirectory),
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{
+									Name:      "data",
+									MountPath: meshv1.DefaultDataDirectory,
+								},
+							},
+						},
+					}, group.Spec.InitContainers...),
 					Containers: append([]corev1.Container{
 						{
 							Name:            "node",

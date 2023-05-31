@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"time"
 
@@ -81,31 +82,56 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// Configure the bootstrap group
 	bootstrapGroup := mesh.BootstrapGroup()
-	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, bootstrapGroup, &mesh))
-	for i := 0; i < int(bootstrapGroup.Spec.Replicas); i++ {
-		toApply = append(toApply, resources.NewNodeCertificate(&mesh, bootstrapGroup, &mesh, i))
-	}
-	configMap, err := resources.NewNodeGroupConfigMap(&mesh, bootstrapGroup, &mesh, true)
-	if err != nil {
-		log.Error(err, "unable to create config map")
-		return ctrl.Result{}, err
-	}
-	checksum := configMap.GetAnnotations()[meshv1.ConfigChecksumAnnotation]
-	toApply = append(toApply, configMap,
-		resources.NewNodeGroupStatefulSet(&mesh, bootstrapGroup, &mesh, checksum))
-
+	var externalURL string
 	if bootstrapGroup.Spec.Service != nil {
-		lbconfig, err := resources.NewNodeGroupLBConfigMap(&mesh, bootstrapGroup, &mesh)
+		lbconfig, checksum, err := resources.NewNodeGroupLBConfigMap(&mesh, bootstrapGroup, &mesh)
 		if err != nil {
 			log.Error(err, "unable to create config map")
 			return ctrl.Result{}, err
 		}
 		toApply = append(toApply, lbconfig,
-			resources.NewNodeGroupLBDeployment(&mesh, bootstrapGroup, &mesh),
+			resources.NewNodeGroupLBDeployment(&mesh, bootstrapGroup, &mesh, checksum),
 			resources.NewNodeGroupLBService(&mesh, bootstrapGroup, &mesh))
+		externalURL = bootstrapGroup.Spec.Service.ExternalURL
+		if externalURL == "" && bootstrapGroup.Spec.Service.Type != corev1.ServiceTypeClusterIP {
+			// We need to pre-create the service so we can use it as the external URL
+			err = resources.Apply(ctx, r.Client, toApply)
+			if err != nil {
+				log.Error(err, "unable to apply resources")
+				return ctrl.Result{}, err
+			}
+			externalURL, err = getLBExternalIP(ctx, r.Client, &mesh, bootstrapGroup)
+			if err != nil {
+				if errors.Is(err, ErrLBNotReady) {
+					log.Info("waiting for load balancer to be ready")
+					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+				}
+				log.Error(err, "unable to get load balancer external IP")
+				return ctrl.Result{}, err
+			}
+			// Reset toApply
+			toApply = make([]client.Object, 0)
+		}
 	}
+	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, bootstrapGroup, &mesh))
+	for i := 0; i < int(bootstrapGroup.Spec.Replicas); i++ {
+		toApply = append(toApply, resources.NewNodeCertificate(&mesh, bootstrapGroup, &mesh, i))
+	}
+	configMap, checksum, err := resources.NewNodeGroupConfigMap(resources.NodeGroupConfigOptions{
+		Mesh:             &mesh,
+		Group:            bootstrapGroup,
+		OwnedBy:          &mesh,
+		IsBootstrap:      true,
+		ExternalEndpoint: externalURL,
+	})
+	if err != nil {
+		log.Error(err, "unable to create config map")
+		return ctrl.Result{}, err
+	}
+	toApply = append(toApply, configMap,
+		resources.NewNodeGroupStatefulSet(&mesh, bootstrapGroup, &mesh, checksum))
 
-	// Apply the resources
+	// Apply any remaining resources
 	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
 		log.Error(err, "unable to apply resources")
 		return ctrl.Result{}, err
@@ -123,29 +149,14 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	// Get the LB service
-	var lbService corev1.Service
-	err := r.Get(ctx, client.ObjectKey{
-		Name:      meshv1.MeshNodeGroupLBName(mesh, mesh.BootstrapGroup()),
-		Namespace: mesh.GetNamespace(),
-	}, &lbService)
-	if err != nil {
-		log.Error(err, "unable to fetch load balancer service")
-		return ctrl.Result{}, err
-	}
 	var externalIP string
-	switch lbService.Spec.Type {
-	case corev1.ServiceTypeLoadBalancer:
-		if len(lbService.Status.LoadBalancer.Ingress) == 0 {
-			log.Info("load balancer service has no ingress, requeueing")
+	externalIP, err := getLBExternalIP(ctx, r.Client, mesh, mesh.BootstrapGroup())
+	if err != nil {
+		log.Error(err, "unable to get LB external IP")
+		if errors.Is(err, ErrLBNotReady) {
 			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 		}
-		externalIP = lbService.Status.LoadBalancer.Ingress[0].IP
-	case corev1.ServiceTypeNodePort:
-		// TODO: This is not correct, we need to get the external IP of the node
-		externalIP = lbService.Spec.ClusterIP
-	default:
-		log.Info("load balancer service has unknown type, requeueing")
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
+		return ctrl.Result{}, err
 	}
 	// Get the admin certificate
 	var secret corev1.Secret
