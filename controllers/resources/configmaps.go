@@ -26,7 +26,6 @@ import (
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -37,8 +36,6 @@ type NodeGroupConfigOptions struct {
 	Mesh *meshv1.Mesh
 	// Group is the node group.
 	Group *meshv1.NodeGroup
-	// OwnedBy is the object that owns the config.
-	OwnedBy client.Object
 	// IsBootstrap is true if this is the bootstrap node group.
 	IsBootstrap bool
 	// ExternalEndpoint is the external endpoint for the node group.
@@ -83,7 +80,7 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 	if opts.ExternalEndpoint != "" {
 		nodeopts.Store.NodeEndpoint = opts.ExternalEndpoint
 		wgep := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`,
-			opts.ExternalEndpoint, meshv1.DefaultDataDirectory, group.Spec.Service.WireGuardPort)
+			opts.ExternalEndpoint, meshv1.DefaultDataDirectory, group.Spec.Cluster.Service.WireGuardPort)
 		wgendpoints = append(wgendpoints, wgep)
 	} else if opts.IsBootstrap {
 		// We need to at least use the internal endpoint for the bootstrap node group
@@ -98,17 +95,17 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 		nodeopts.Store.BootstrapWithRaftACLs = true
 		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
 		nodeopts.Services.EnableLeaderProxy = true
-		if group.Spec.Replicas > 1 {
+		if group.Spec.Cluster.Replicas > 1 {
 			nodeopts.Store.Options.AdvertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
 				meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultRaftPort)
 			var bootstrapServers strings.Builder
-			for i := 0; i < int(group.Spec.Replicas); i++ {
+			for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
 				bootstrapServers.WriteString(fmt.Sprintf("%s=%s:%d",
 					meshv1.MeshNodeHostname(mesh, group, i),
 					meshv1.MeshNodeClusterFQDN(mesh, group, i),
 					meshv1.DefaultRaftPort,
 				))
-				if i < int(group.Spec.Replicas)-1 {
+				if i < int(group.Spec.Cluster.Replicas)-1 {
 					bootstrapServers.WriteString(",")
 				}
 			}
@@ -117,11 +114,32 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 	}
 
 	// Storage options
-	if group.Spec.PVCSpec != nil {
+	if group.Spec.Cluster.PVCSpec != nil {
 		nodeopts.Store.Options.DataDir = meshv1.DefaultDataDirectory
 	} else {
 		nodeopts.Store.Options.DataDir = ""
 		nodeopts.Store.Options.InMemory = true
+	}
+
+	// Service options
+	if groupcfg.Services != nil {
+		nodeopts.Services.EnableLeaderProxy = opts.IsBootstrap || groupcfg.Services.EnableLeaderProxy
+		nodeopts.Services.EnableMetrics = groupcfg.Services.Metrics != nil
+		nodeopts.Services.EnableWebRTCAPI = groupcfg.Services.WebRTC != nil
+		nodeopts.Services.EnableMeshDNS = groupcfg.Services.MeshDNS != nil
+		nodeopts.Services.EnableMeshAPI = groupcfg.Services.EnableMeshAPI
+		nodeopts.Services.EnablePeerDiscoveryAPI = groupcfg.Services.EnablePeerDiscoveryAPI
+		if groupcfg.Services.Metrics != nil {
+			nodeopts.Services.MetricsListenAddress = groupcfg.Services.Metrics.ListenAddress
+			nodeopts.Services.MetricsPath = groupcfg.Services.Metrics.Path
+		}
+		if groupcfg.Services.WebRTC != nil {
+			nodeopts.Services.STUNServers = strings.Join(groupcfg.Services.WebRTC.STUNServers, ",")
+		}
+		if groupcfg.Services.MeshDNS != nil {
+			nodeopts.Services.MeshDNSListenUDP = groupcfg.Services.MeshDNS.ListenUDP
+			nodeopts.Services.MeshDNSListenTCP = groupcfg.Services.MeshDNS.ListenTCP
+		}
 	}
 
 	// Build the config
@@ -145,7 +163,7 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
 			Annotations:     annotations,
-			OwnerReferences: meshv1.OwnerReferences(opts.OwnedBy),
+			OwnerReferences: meshv1.OwnerReferences(opts.Group),
 		},
 		Data: map[string]string{
 			"config.yaml": string(out),
@@ -153,7 +171,7 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 	}, csum, nil
 }
 
-func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) (cm *corev1.ConfigMap, csum string, err error) {
+func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (cm *corev1.ConfigMap, csum string, err error) {
 	cfg := map[string]map[string]any{
 		"tcp": make(map[string]any),
 		"udp": make(map[string]any),
@@ -178,7 +196,7 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 	}
 	udprouters := make(map[string]any)
 	udpservices := make(map[string]any)
-	for i := 0; i < int(group.Spec.Replicas); i++ {
+	for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
 		udprouters[fmt.Sprintf("wg%d", i)] = map[string]any{
 			"entryPoints": []string{fmt.Sprintf("wg%d", i)},
 			"service":     fmt.Sprintf("wg%d", i),
@@ -215,7 +233,7 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLBLabels(mesh, group),
 			Annotations:     annotations,
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Data: map[string]string{
 			"config.yaml": string(out),

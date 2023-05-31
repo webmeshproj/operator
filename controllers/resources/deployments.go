@@ -24,14 +24,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
 // NewNodeGroupLBDeployment returns a new Deployment for routing external traffic
 // to a node group.
-func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, configChecksum string) *appsv1.Deployment {
+func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configChecksum string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -41,7 +40,7 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 			Name:            meshv1.MeshNodeGroupLBName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLBLabels(mesh, group),
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{
@@ -70,10 +69,10 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 									"--entrypoints.traefik.address=:9000/tcp",
 									"--entrypoints.grpc.address=:8443/tcp",
 								}
-								for i := 0; i < int(group.Spec.Replicas); i++ {
+								for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
 									args = append(args,
 										fmt.Sprintf("--entrypoints.wg%d.address=:%d/udp",
-											i, group.Spec.Service.WireGuardPort+int32(i)))
+											i, group.Spec.Cluster.Service.WireGuardPort+int32(i)))
 									args = append(args,
 										fmt.Sprintf("--entrypoints.wg%d.udp.timeout=1m", i))
 								}
@@ -92,11 +91,11 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 										Protocol:      corev1.ProtocolTCP,
 									},
 								}
-								for i := 0; i < int(group.Spec.Replicas); i++ {
+								for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
 									ports = append(ports,
 										corev1.ContainerPort{
 											Name:          fmt.Sprintf("wg%d", i),
-											ContainerPort: group.Spec.Service.WireGuardPort + int32(i),
+											ContainerPort: group.Spec.Cluster.Service.WireGuardPort + int32(i),
 											Protocol:      corev1.ProtocolUDP,
 										})
 								}
@@ -166,9 +165,9 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 							},
 						},
 					},
-					ImagePullSecrets:              group.Spec.ImagePullSecrets,
+					ImagePullSecrets:              group.Spec.Cluster.ImagePullSecrets,
 					TerminationGracePeriodSeconds: Pointer(int64(30)),
-					NodeSelector:                  group.Spec.NodeSelector,
+					NodeSelector:                  group.Spec.Cluster.NodeSelector,
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsUser:    Pointer(int64(65534)),
 						RunAsGroup:   Pointer(int64(65534)),
@@ -178,11 +177,11 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedB
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
 					},
-					Affinity:                  group.Spec.Affinity,
-					Tolerations:               group.Spec.Tolerations,
-					PreemptionPolicy:          &group.Spec.PreemptionPolicy,
-					TopologySpreadConstraints: group.Spec.TopologySpreadConstraints,
-					ResourceClaims:            group.Spec.ResourceClaims,
+					Affinity:                  group.Spec.Cluster.Affinity,
+					Tolerations:               group.Spec.Cluster.Tolerations,
+					PreemptionPolicy:          &group.Spec.Cluster.PreemptionPolicy,
+					TopologySpreadConstraints: group.Spec.Cluster.TopologySpreadConstraints,
+					ResourceClaims:            group.Spec.Cluster.ResourceClaims,
 				},
 			},
 		},

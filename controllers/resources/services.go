@@ -22,13 +22,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
 // NewNodeGroupHeadlessService returns a new headless service for a NodeGroup.
-func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) *corev1.Service {
+func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.Service {
 	policy := corev1.IPFamilyPolicyPreferDualStack
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -39,7 +38,7 @@ func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, own
 			Name:            meshv1.MeshNodeGroupHeadlessServiceName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP:      "None",
@@ -71,9 +70,9 @@ func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, own
 }
 
 // NewNodeGroupLBService returns a new service for exposing a NodeGroup.
-func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object) *corev1.Service {
+func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.Service {
 	policy := corev1.IPFamilyPolicyPreferDualStack
-	spec := group.Spec.Service
+	spec := group.Spec.Cluster.Service
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -83,7 +82,7 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy c
 			Name:            meshv1.MeshNodeGroupLBName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLBLabels(mesh, group),
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(group),
 			Annotations:     spec.Annotations,
 		},
 		Spec: corev1.ServiceSpec{
@@ -99,7 +98,7 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy c
 						Protocol:   corev1.ProtocolTCP,
 					},
 				}
-				for i := 0; i < int(group.Spec.Replicas); i++ {
+				for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
 					ports = append(ports, corev1.ServicePort{
 						Name:       fmt.Sprintf("wireguard-%d", i),
 						Port:       spec.WireGuardPort + int32(i),

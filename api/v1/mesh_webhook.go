@@ -54,9 +54,15 @@ func (r *Mesh) Default() {
 		var nodegroupConfig NodeGroupConfig
 		nodegroupConfig.Default()
 		r.Spec.Bootstrap.Config = &nodegroupConfig
+	} else if r.Spec.Bootstrap.Config != nil {
+		r.Spec.Bootstrap.Config.Default()
 	}
-	if r.Spec.Bootstrap.PVCSpec == nil {
-		r.Spec.Bootstrap.PVCSpec = &corev1.PersistentVolumeClaimSpec{
+	// TODO: Handle non-cluster bootstrap groups
+	if r.Spec.Bootstrap.Cluster == nil {
+		r.Spec.Bootstrap.Cluster = &NodeGroupClusterConfig{}
+	}
+	if r.Spec.Bootstrap.Cluster.PVCSpec == nil {
+		r.Spec.Bootstrap.Cluster.PVCSpec = &corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
@@ -65,8 +71,8 @@ func (r *Mesh) Default() {
 			},
 		}
 	}
-	if r.Spec.Bootstrap.Service != nil {
-		r.Spec.Bootstrap.Service.Default()
+	if r.Spec.Bootstrap.Cluster.Service != nil {
+		r.Spec.Bootstrap.Cluster.Service.Default()
 	}
 
 	// Set the issuer name if we are creating it
@@ -133,22 +139,24 @@ func (r *meshValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			new.Spec.IPv4,
 			"ipv4 is immutable")
 	}
-	if old.Spec.Bootstrap.Replicas != new.Spec.Bootstrap.Replicas {
-		return nil, field.Invalid(
-			field.NewPath("spec", "bootstrap", "replicas"),
-			new.Spec.Bootstrap.Replicas,
-			"bootstrap.replicas is immutable")
-	}
-	if old.Spec.Bootstrap.PVCSpec != nil && new.Spec.Bootstrap.PVCSpec == nil {
-		return nil, field.Invalid(
-			field.NewPath("spec", "bootstrap", "pvcSpec"),
-			new.Spec.Bootstrap.PVCSpec,
-			"changing to a non-persistent bootstrap node group is not supported")
-	} else if old.Spec.Bootstrap.PVCSpec == nil && new.Spec.Bootstrap.PVCSpec != nil {
-		return nil, field.Invalid(
-			field.NewPath("spec", "bootstrap", "pvcSpec"),
-			new.Spec.Bootstrap.PVCSpec,
-			"changing to a persistent bootstrap node group is not supported")
+	if old.Spec.Bootstrap.Cluster != nil {
+		if old.Spec.Bootstrap.Cluster.Replicas != new.Spec.Bootstrap.Cluster.Replicas {
+			return nil, field.Invalid(
+				field.NewPath("spec", "bootstrap", "replicas"),
+				new.Spec.Bootstrap.Cluster.Replicas,
+				"bootstrap.replicas is immutable")
+		}
+		if old.Spec.Bootstrap.Cluster.PVCSpec != nil && new.Spec.Bootstrap.Cluster.PVCSpec == nil {
+			return nil, field.Invalid(
+				field.NewPath("spec", "bootstrap", "pvcSpec"),
+				new.Spec.Bootstrap.Cluster.PVCSpec,
+				"changing to a non-persistent bootstrap node group is not supported")
+		} else if old.Spec.Bootstrap.Cluster.PVCSpec == nil && new.Spec.Bootstrap.Cluster.PVCSpec != nil {
+			return nil, field.Invalid(
+				field.NewPath("spec", "bootstrap", "pvcSpec"),
+				new.Spec.Bootstrap.Cluster.PVCSpec,
+				"changing to a persistent bootstrap node group is not supported")
+		}
 	}
 	return nil, nil
 }

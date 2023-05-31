@@ -19,7 +19,6 @@ package resources
 import (
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -81,7 +80,7 @@ func NewMeshAdminCertificate(mesh *meshv1.Mesh) *certv1.Certificate {
 }
 
 // NewNodeCertificate returns a new TLS certificate for a Mesh node.
-func NewNodeCertificate(mesh *meshv1.Mesh, nodeGroup *meshv1.NodeGroup, ownedBy client.Object, index int) *certv1.Certificate {
+func NewNodeCertificate(mesh *meshv1.Mesh, nodeGroup *meshv1.NodeGroup, index int) *certv1.Certificate {
 	return &certv1.Certificate{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: certv1.SchemeGroupVersion.String(),
@@ -91,7 +90,7 @@ func NewNodeCertificate(mesh *meshv1.Mesh, nodeGroup *meshv1.NodeGroup, ownedBy 
 			Name:            meshv1.MeshNodeCertName(mesh, nodeGroup, index),
 			Namespace:       nodeGroup.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, nodeGroup),
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(nodeGroup),
 		},
 		Spec: certv1.CertificateSpec{
 			CommonName: meshv1.MeshNodeHostname(mesh, nodeGroup, index),

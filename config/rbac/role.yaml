@@ -10,7 +10,6 @@ rules:
   resources:
   - configmaps
   - persistentvolumeclaims
-  - secrets
   - services
   verbs:
   - create
@@ -23,8 +22,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - configmaps
-  - persistentvolumeclaims
+  - secrets
   - services
   verbs:
   - create

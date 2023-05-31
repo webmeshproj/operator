@@ -27,7 +27,6 @@ import (
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	ctlconfig "github.com/webmeshproj/node/pkg/ctlcmd/config"
 	"gopkg.in/yaml.v3"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,9 +44,9 @@ type MeshReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=services;secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers;certificates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=meshes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=meshes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=meshes/finalizers,verbs=update
@@ -80,66 +79,24 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Create the admin certificate
 	toApply = append(toApply, resources.NewMeshAdminCertificate(&mesh))
 
-	// Configure the bootstrap group
-	bootstrapGroup := mesh.BootstrapGroup()
-	var externalURL string
-	if bootstrapGroup.Spec.Service != nil {
-		lbconfig, checksum, err := resources.NewNodeGroupLBConfigMap(&mesh, bootstrapGroup, &mesh)
-		if err != nil {
-			log.Error(err, "unable to create config map")
-			return ctrl.Result{}, err
-		}
-		toApply = append(toApply, lbconfig,
-			resources.NewNodeGroupLBDeployment(&mesh, bootstrapGroup, &mesh, checksum),
-			resources.NewNodeGroupLBService(&mesh, bootstrapGroup, &mesh))
-		externalURL = bootstrapGroup.Spec.Service.ExternalURL
-		if externalURL == "" && bootstrapGroup.Spec.Service.Type != corev1.ServiceTypeClusterIP {
-			// We need to pre-create the service so we can use it as the external URL
-			err = resources.Apply(ctx, r.Client, toApply)
-			if err != nil {
-				log.Error(err, "unable to apply resources")
-				return ctrl.Result{}, err
-			}
-			externalURL, err = getLBExternalIP(ctx, r.Client, &mesh, bootstrapGroup)
-			if err != nil {
-				if errors.Is(err, ErrLBNotReady) {
-					log.Info("waiting for load balancer to be ready")
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-				}
-				log.Error(err, "unable to get load balancer external IP")
-				return ctrl.Result{}, err
-			}
-			// Reset toApply
-			toApply = make([]client.Object, 0)
-		}
-	}
-	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, bootstrapGroup, &mesh))
-	for i := 0; i < int(bootstrapGroup.Spec.Replicas); i++ {
-		toApply = append(toApply, resources.NewNodeCertificate(&mesh, bootstrapGroup, &mesh, i))
-	}
-	configMap, checksum, err := resources.NewNodeGroupConfigMap(resources.NodeGroupConfigOptions{
-		Mesh:             &mesh,
-		Group:            bootstrapGroup,
-		OwnedBy:          &mesh,
-		IsBootstrap:      true,
-		ExternalEndpoint: externalURL,
-	})
-	if err != nil {
-		log.Error(err, "unable to create config map")
-		return ctrl.Result{}, err
-	}
-	toApply = append(toApply, configMap,
-		resources.NewNodeGroupStatefulSet(&mesh, bootstrapGroup, &mesh, checksum))
+	// Create the bootstrap group
+	bootstrap := mesh.BootstrapGroup()
+	toApply = append(toApply, bootstrap)
 
-	// Apply any remaining resources
+	// Apply the resources
 	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
 		log.Error(err, "unable to apply resources")
 		return ctrl.Result{}, err
 	}
 
-	if bootstrapGroup.Spec.Service == nil || bootstrapGroup.Spec.Service.Type == corev1.ServiceTypeClusterIP {
-		// We are done here, we can't generate an admin config
-		// without an exposed service
+	if bootstrap.Spec.Cluster != nil {
+		if bootstrap.Spec.Cluster.Service == nil || bootstrap.Spec.Cluster.Service.Type == corev1.ServiceTypeClusterIP {
+			// We are done here, we can't generate an admin config
+			// without an exposed service
+			return ctrl.Result{}, nil
+		}
+	} else {
+		// TODO: Unimplemented
 		return ctrl.Result{}, nil
 	}
 
@@ -181,7 +138,7 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 		{
 			Name: mesh.GetName(),
 			Cluster: ctlconfig.ClusterConfig{
-				Server:                   fmt.Sprintf("%s:%d", externalIP, mesh.Spec.Bootstrap.Service.GRPCPort),
+				Server:                   fmt.Sprintf("%s:%d", externalIP, mesh.Spec.Bootstrap.Cluster.Service.GRPCPort),
 				TLSVerifyChainOnly:       true,
 				CertificateAuthorityData: base64.StdEncoding.EncodeToString(secret.Data[cmmeta.TLSCAKey]),
 			},
@@ -240,11 +197,8 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 func (r *MeshReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&meshv1.Mesh{}).
-		Owns(&corev1.ConfigMap{}).
+		Owns(&meshv1.NodeGroup{}).
 		Owns(&corev1.Secret{}).
-		Owns(&corev1.Service{}).
-		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&appsv1.StatefulSet{}).
 		Owns(&certv1.ClusterIssuer{}).
 		Owns(&certv1.Issuer{}).
 		Owns(&certv1.Certificate{}).

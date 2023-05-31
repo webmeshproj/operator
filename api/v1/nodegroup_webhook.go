@@ -46,10 +46,16 @@ func (r *NodeGroup) Default() {
 	nodegrouplog.Info("defaulting", "name", r.Name)
 
 	// Ensure a default config
-	if r.Spec.ConfigGroup == "" {
-		r.Spec.Config = &NodeGroupConfig{
-			LogLevel: "info",
-		}
+	if r.Spec.ConfigGroup == "" && r.Spec.Config == nil {
+		r.Spec.Config = &NodeGroupConfig{}
+		r.Spec.Config.Default()
+	} else if r.Spec.Config != nil {
+		r.Spec.Config.Default()
+	}
+
+	// TODO: Handle non-cluster node groups
+	if r.Spec.Cluster == nil {
+		r.Spec.Cluster = &NodeGroupClusterConfig{}
 	}
 }
 

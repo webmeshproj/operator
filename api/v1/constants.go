@@ -47,4 +47,7 @@ const (
 	NodeGroupLBLabel = "webmesh.io/nodegroup-lb"
 	// ConfigChecksumAnnotation is the annotation to use for configmap checksums.
 	ConfigChecksumAnnotation = "webmesh.io/config-checksum"
+	// BootstrapNodeGroupAnnotation is the annotation to use for bootstrap node groups.
+	// This should only be set by the controller for bootstrap node groups.
+	BootstrapNodeGroupAnnotation = "webmesh.io/bootstrap-nodegroup"
 )

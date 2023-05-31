@@ -23,13 +23,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
 
 // NewNodeGroupStatefulSet returns a new StatefulSet for a NodeGroup.
-func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy client.Object, configChecksum string) *appsv1.StatefulSet {
+func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configChecksum string) *appsv1.StatefulSet {
+	spec := group.Spec.Cluster
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: appsv1.SchemeGroupVersion.String(),
@@ -39,10 +39,10 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 			Name:            meshv1.MeshNodeGroupStatefulSetName(mesh, group),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
-			OwnerReferences: meshv1.OwnerReferences(ownedBy),
+			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: Pointer(group.Spec.Replicas),
+			Replicas: Pointer(spec.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: meshv1.NodeGroupSelector(mesh, group),
 			},
@@ -55,7 +55,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 				},
 			},
 			VolumeClaimTemplates: func() []corev1.PersistentVolumeClaim {
-				if group.Spec.PVCSpec == nil {
+				if spec.PVCSpec == nil {
 					return []corev1.PersistentVolumeClaim{}
 				}
 				return []corev1.PersistentVolumeClaim{
@@ -63,7 +63,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "data",
 						},
-						Spec: *group.Spec.PVCSpec,
+						Spec: *spec.PVCSpec,
 					},
 				}
 			}(),
@@ -75,7 +75,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: meshv1.NodeGroupLabels(mesh, group),
 					Annotations: func() map[string]string {
-						annotations := group.Spec.PodAnnotations
+						annotations := spec.PodAnnotations
 						if annotations == nil {
 							annotations = map[string]string{}
 						}
@@ -84,7 +84,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 					}(),
 				},
 				Spec: corev1.PodSpec{
-					ImagePullSecrets: group.Spec.ImagePullSecrets,
+					ImagePullSecrets: spec.ImagePullSecrets,
 					InitContainers: append([]corev1.Container{
 						{
 							Name:            "write-ordinal",
@@ -102,12 +102,12 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 								},
 							},
 						},
-					}, group.Spec.InitContainers...),
+					}, spec.InitContainers...),
 					Containers: append([]corev1.Container{
 						{
 							Name:            "node",
 							Image:           group.Spec.Image,
-							ImagePullPolicy: group.Spec.ImagePullPolicy,
+							ImagePullPolicy: spec.ImagePullPolicy,
 							Args:            []string{"--config", "/etc/webmesh/config.yaml"},
 							Env: []corev1.EnvVar{
 								{
@@ -147,7 +147,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 										MountPath: meshv1.DefaultDataDirectory,
 									},
 								}
-								for i := 0; i < int(group.Spec.Replicas); i++ {
+								for i := 0; i < int(spec.Replicas); i++ {
 									vols = append(vols, corev1.VolumeMount{
 										Name: fmt.Sprintf("node-tls-%d", i),
 										MountPath: fmt.Sprintf("%s/%s-%d",
@@ -157,9 +157,9 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 										),
 									})
 								}
-								return append(vols, group.Spec.AdditionalVolumeMounts...)
+								return append(vols, spec.AdditionalVolumeMounts...)
 							}(),
-							Resources: group.Spec.Resources,
+							Resources: spec.Resources,
 							// LivenessProbe:  &corev1.Probe{},
 							// ReadinessProbe: &corev1.Probe{},
 							SecurityContext: &corev1.SecurityContext{
@@ -179,7 +179,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 								},
 							},
 						},
-					}, group.Spec.AdditionalContainers...),
+					}, spec.AdditionalContainers...),
 					Volumes: func() []corev1.Volume {
 						vols := []corev1.Volume{
 							{
@@ -193,7 +193,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 								},
 							},
 						}
-						if group.Spec.PVCSpec == nil {
+						if spec.PVCSpec == nil {
 							vols = append(vols, corev1.Volume{
 								Name: "data",
 								VolumeSource: corev1.VolumeSource{
@@ -201,7 +201,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 								},
 							})
 						}
-						for i := 0; i < int(group.Spec.Replicas); i++ {
+						for i := 0; i < int(spec.Replicas); i++ {
 							vols = append(vols, corev1.Volume{
 								Name: fmt.Sprintf("node-tls-%d", i),
 								VolumeSource: corev1.VolumeSource{
@@ -212,11 +212,11 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 								},
 							})
 						}
-						return append(vols, group.Spec.AdditionalVolumes...)
+						return append(vols, spec.AdditionalVolumes...)
 					}(),
 					TerminationGracePeriodSeconds: Pointer(int64(60)),
-					NodeSelector:                  group.Spec.NodeSelector,
-					HostNetwork:                   group.Spec.HostNetwork,
+					NodeSelector:                  spec.NodeSelector,
+					HostNetwork:                   spec.HostNetwork,
 					// Make sure additional user-defined containers run
 					// with lower privileges unless configured otherwise.
 					SecurityContext: &corev1.PodSecurityContext{
@@ -228,11 +228,11 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, ownedBy
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
 					},
-					Affinity:                  group.Spec.Affinity,
-					Tolerations:               group.Spec.Tolerations,
-					PreemptionPolicy:          &group.Spec.PreemptionPolicy,
-					TopologySpreadConstraints: group.Spec.TopologySpreadConstraints,
-					ResourceClaims:            group.Spec.ResourceClaims,
+					Affinity:                  spec.Affinity,
+					Tolerations:               spec.Tolerations,
+					PreemptionPolicy:          &spec.PreemptionPolicy,
+					TopologySpreadConstraints: spec.TopologySpreadConstraints,
+					ResourceClaims:            spec.ResourceClaims,
 				},
 			},
 		},
