@@ -17,8 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"fmt"
-
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -81,7 +79,7 @@ func (c *Mesh) BootstrapGroup() *NodeGroup {
 			Kind:       "NodeGroup",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            fmt.Sprintf("%s-bootstrap", c.GetName()),
+			Name:            "bootstrap",
 			Namespace:       c.GetNamespace(),
 			Labels:          c.GetLabels(),
 			Annotations:     c.GetAnnotations(),

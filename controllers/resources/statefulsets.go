@@ -69,7 +69,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 			}(),
 			PersistentVolumeClaimRetentionPolicy: &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
 				WhenDeleted: appsv1.DeletePersistentVolumeClaimRetentionPolicyType,
-				WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+				WhenScaled:  appsv1.DeletePersistentVolumeClaimRetentionPolicyType,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
