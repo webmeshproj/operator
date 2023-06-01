@@ -25,6 +25,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -77,6 +78,35 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
+	cli := r.Client
+	if group.Spec.Cluster.Kubeconfig != nil {
+		var secret corev1.Secret
+		err := r.Get(ctx, client.ObjectKey{
+			Name:      group.Spec.Cluster.Kubeconfig.Name,
+			Namespace: group.GetNamespace(),
+		}, &secret)
+		if err != nil {
+			log.Error(err, "unable to fetch kubeconfig secret")
+			return ctrl.Result{}, err
+		}
+		kubeconfig, ok := secret.Data[group.Spec.Cluster.Kubeconfig.Key]
+		if !ok {
+			err := errors.New("kubeconfig secret does not contain key")
+			log.Error(err, "unable to fetch kubeconfig secret")
+			return ctrl.Result{}, err
+		}
+		cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
+		if err != nil {
+			log.Error(err, "unable to create client config")
+			return ctrl.Result{}, err
+		}
+		cli, err = client.New(cfg, client.Options{})
+		if err != nil {
+			log.Error(err, "unable to create client")
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Create the service if we are exposing the node group
 	var externalURL string
 	if group.Spec.Cluster.Service != nil {
@@ -91,12 +121,12 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		externalURL = group.Spec.Cluster.Service.ExternalURL
 		if externalURL == "" && group.Spec.Cluster.Service.Type != corev1.ServiceTypeClusterIP {
 			// We need to pre-create the service so we can use it as the external URL
-			err = resources.Apply(ctx, r.Client, toApply)
+			err = resources.Apply(ctx, cli, toApply)
 			if err != nil {
 				log.Error(err, "unable to apply resources")
 				return ctrl.Result{}, err
 			}
-			externalURL, err = getLBExternalIP(ctx, r.Client, &mesh, &group)
+			externalURL, err = getLBExternalIP(ctx, cli, &mesh, &group)
 			if err != nil {
 				if errors.Is(err, ErrLBNotReady) {
 					log.Info("waiting for load balancer to be ready")
@@ -133,7 +163,7 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		resources.NewNodeGroupStatefulSet(&mesh, &group, checksum))
 
 	// Apply any remaining resources
-	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
+	if err := resources.Apply(ctx, cli, toApply); err != nil {
 		log.Error(err, "unable to apply resources")
 		return ctrl.Result{}, err
 	}

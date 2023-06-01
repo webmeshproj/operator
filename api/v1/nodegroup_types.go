@@ -140,6 +140,11 @@ type NodeGroupClusterConfig struct {
 	// PVCSpec is the specification for the PVCs to use for this group.
 	// +optional
 	PVCSpec *corev1.PersistentVolumeClaimSpec `json:"pvcSpec,omitempty"`
+
+	// Kubeconfig is a reference to a secret containing a kubeconfig to use
+	// for this group. If not specified, the current kubeconfig will be used.
+	// +optional
+	Kubeconfig *corev1.SecretKeySelector `json:"kubeconfig,omitempty"`
 }
 
 // NodeGroupLBConfig defines the configurations for exposing a group of nodes.
