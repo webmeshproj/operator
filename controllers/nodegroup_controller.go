@@ -142,7 +142,7 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Create Node group resources
 	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, &group))
-	for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
+	for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
 		toApply = append(toApply, resources.NewNodeCertificate(&mesh, &group, i))
 	}
 	var isBootstrap bool

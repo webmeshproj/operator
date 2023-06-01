@@ -61,7 +61,9 @@ func (r *Mesh) Default() {
 	if r.Spec.Bootstrap.Cluster == nil {
 		r.Spec.Bootstrap.Cluster = &NodeGroupClusterConfig{}
 	}
+	r.Spec.Bootstrap.Cluster.Default()
 	if r.Spec.Bootstrap.Cluster.PVCSpec == nil {
+		// Require persistence for the bootstrap node group
 		r.Spec.Bootstrap.Cluster.PVCSpec = &corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			Resources: corev1.ResourceRequirements{
@@ -70,9 +72,6 @@ func (r *Mesh) Default() {
 				},
 			},
 		}
-	}
-	if r.Spec.Bootstrap.Cluster.Service != nil {
-		r.Spec.Bootstrap.Cluster.Service.Default()
 	}
 
 	// Set the issuer name if we are creating it

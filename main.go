@@ -19,7 +19,6 @@ package main
 import (
 	"flag"
 	"os"
-
 	//+kubebuilder:scaffold:imports
 
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -34,6 +33,7 @@ import (
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 	"github.com/webmeshproj/operator/controllers"
+	"github.com/webmeshproj/operator/controllers/version"
 )
 
 var (
@@ -68,6 +68,12 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.Info("starting Webmesh controller",
+		"version", version.Version,
+		"gitCommit", version.Commit,
+		"buildDate", version.BuildDate,
+	)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,

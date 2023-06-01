@@ -5423,6 +5423,27 @@ spec:
                           - name
                           type: object
                         type: array
+                      kubeconfig:
+                        description: Kubeconfig is a reference to a secret containing
+                          a kubeconfig to use for this group. If not specified, the
+                          current kubeconfig will be used.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              TODO: Add other useful fields. apiVersion, kind, uid?'
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
                       nodeSelector:
                         additionalProperties:
                           type: string

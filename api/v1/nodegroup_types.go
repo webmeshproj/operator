@@ -65,7 +65,7 @@ type NodeGroupClusterConfig struct {
 	// Replicas is the number of replicas to run for this group.
 	// +kubebuilder:default:=1
 	// +optional
-	Replicas int32 `json:"replicas,omitempty"`
+	Replicas *int32 `json:"replicas,omitempty"`
 
 	// PodAnnotations is the annotations to use for the node containers in
 	// this group.
@@ -145,6 +145,22 @@ type NodeGroupClusterConfig struct {
 	// for this group. If not specified, the current kubeconfig will be used.
 	// +optional
 	Kubeconfig *corev1.SecretKeySelector `json:"kubeconfig,omitempty"`
+}
+
+// Default sets default values for the configuration.
+func (c *NodeGroupClusterConfig) Default() {
+	if c.ImagePullPolicy == "" {
+		c.ImagePullPolicy = corev1.PullIfNotPresent
+	}
+	if c.Replicas == nil {
+		c.Replicas = &[]int32{1}[0]
+	}
+	if c.PreemptionPolicy == "" {
+		c.PreemptionPolicy = corev1.PreemptLowerPriority
+	}
+	if c.Service != nil {
+		c.Service.Default()
+	}
 }
 
 // NodeGroupLBConfig defines the configurations for exposing a group of nodes.

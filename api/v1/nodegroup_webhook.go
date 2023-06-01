@@ -65,9 +65,7 @@ func (r *NodeGroup) Default() {
 	if r.Spec.Cluster == nil {
 		r.Spec.Cluster = &NodeGroupClusterConfig{}
 	}
-	if r.Spec.Cluster.Service != nil {
-		r.Spec.Cluster.Service.Default()
-	}
+	r.Spec.Cluster.Default()
 }
 
 //+kubebuilder:webhook:path=/validate-mesh-webmesh-io-v1-nodegroup,mutating=false,failurePolicy=fail,sideEffects=None,groups=mesh.webmesh.io,resources=nodegroups,verbs=create;update,versions=v1,name=vnodegroup.kb.io,admissionReviewVersions=v1

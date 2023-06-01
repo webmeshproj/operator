@@ -42,7 +42,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: Pointer(spec.Replicas),
+			Replicas: spec.Replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: meshv1.NodeGroupSelector(mesh, group),
 			},
@@ -147,7 +147,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 										MountPath: meshv1.DefaultDataDirectory,
 									},
 								}
-								for i := 0; i < int(spec.Replicas); i++ {
+								for i := 0; i < int(*spec.Replicas); i++ {
 									vols = append(vols, corev1.VolumeMount{
 										Name: fmt.Sprintf("node-tls-%d", i),
 										MountPath: fmt.Sprintf("%s/%s-%d",
@@ -201,7 +201,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 								},
 							})
 						}
-						for i := 0; i < int(spec.Replicas); i++ {
+						for i := 0; i < int(*spec.Replicas); i++ {
 							vols = append(vols, corev1.Volume{
 								Name: fmt.Sprintf("node-tls-%d", i),
 								VolumeSource: corev1.VolumeSource{

@@ -95,17 +95,17 @@ func NewNodeGroupConfigMap(opts NodeGroupConfigOptions) (cm *corev1.ConfigMap, c
 		nodeopts.Store.BootstrapWithRaftACLs = true
 		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
 		nodeopts.Services.EnableLeaderProxy = true
-		if group.Spec.Cluster.Replicas > 1 {
+		if *group.Spec.Cluster.Replicas > 1 {
 			nodeopts.Store.Options.AdvertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`,
 				meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultRaftPort)
 			var bootstrapServers strings.Builder
-			for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
+			for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
 				bootstrapServers.WriteString(fmt.Sprintf("%s=%s:%d",
 					meshv1.MeshNodeHostname(mesh, group, i),
 					meshv1.MeshNodeClusterFQDN(mesh, group, i),
 					meshv1.DefaultRaftPort,
 				))
-				if i < int(group.Spec.Cluster.Replicas)-1 {
+				if i < int(*group.Spec.Cluster.Replicas)-1 {
 					bootstrapServers.WriteString(",")
 				}
 			}
@@ -196,7 +196,7 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (cm *co
 	}
 	udprouters := make(map[string]any)
 	udpservices := make(map[string]any)
-	for i := 0; i < int(group.Spec.Cluster.Replicas); i++ {
+	for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
 		udprouters[fmt.Sprintf("wg%d", i)] = map[string]any{
 			"entryPoints": []string{fmt.Sprintf("wg%d", i)},
 			"service":     fmt.Sprintf("wg%d", i),

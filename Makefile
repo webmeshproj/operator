@@ -61,7 +61,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 ##@ Build
 
 NAME        := operator
-VERSION_PKG := github.com/webmeshproj/$(NAME)/version
+VERSION_PKG := github.com/webmeshproj/$(NAME)/controllers/version
 VERSION     := $(shell git describe --tags --always --dirty)
 COMMIT      := $(shell git rev-parse HEAD)
 DATE        := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')

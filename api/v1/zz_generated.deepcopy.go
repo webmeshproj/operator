@@ -175,6 +175,11 @@ func (in *NodeGroupClusterConfig) DeepCopyInto(out *NodeGroupClusterConfig) {
 		*out = make([]corev1.LocalObjectReference, len(*in))
 		copy(*out, *in)
 	}
+	if in.Replicas != nil {
+		in, out := &in.Replicas, &out.Replicas
+		*out = new(int32)
+		**out = **in
+	}
 	if in.PodAnnotations != nil {
 		in, out := &in.PodAnnotations, &out.PodAnnotations
 		*out = make(map[string]string, len(*in))
@@ -252,6 +257,11 @@ func (in *NodeGroupClusterConfig) DeepCopyInto(out *NodeGroupClusterConfig) {
 	if in.PVCSpec != nil {
 		in, out := &in.PVCSpec, &out.PVCSpec
 		*out = new(corev1.PersistentVolumeClaimSpec)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.Kubeconfig != nil {
+		in, out := &in.Kubeconfig, &out.Kubeconfig
+		*out = new(corev1.SecretKeySelector)
 		(*in).DeepCopyInto(*out)
 	}
 }
