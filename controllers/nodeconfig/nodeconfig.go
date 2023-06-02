@@ -18,8 +18,10 @@ limitations under the License.
 package nodeconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"sort"
 	"strings"
 
 	"github.com/webmeshproj/node/pkg/global"
@@ -60,12 +62,13 @@ type Options struct {
 // Config represents a rendered node group config.
 type Config struct {
 	Options *nodecmd.Options
+	rawjson []byte
 	raw     []byte
 }
 
 // Checksum returns the checksum of the config.
 func (c *Config) Checksum() string {
-	return fmt.Sprintf("%x", crc32.ChecksumIEEE(c.raw))
+	return fmt.Sprintf("%x", crc32.ChecksumIEEE(c.rawjson))
 }
 
 // Raw returns the raw config.
@@ -109,7 +112,8 @@ func New(opts Options) (*Config, error) {
 	nodeopts.Store.ZoneAwarenessID = group.GetName()
 	nodeopts.Store.NodeEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
-		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(opts.WireGuardEndpoints, ",")
+		wgEndpoints := sort.StringSlice(opts.WireGuardEndpoints)
+		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(wgEndpoints, ",")
 	}
 
 	// Bootstrap options
@@ -124,6 +128,8 @@ func New(opts Options) (*Config, error) {
 			for name, addr := range opts.BootstrapServers {
 				bootstrapServers = append(bootstrapServers, fmt.Sprintf("%s=%s", name, addr))
 			}
+			// Sort the bootstrap servers to ensure a consistent order
+			bootstrapServers = sort.StringSlice(bootstrapServers)
 			nodeopts.Store.Options.BootstrapServers = strings.Join(bootstrapServers, ",")
 		}
 	} else {
@@ -167,8 +173,13 @@ func New(opts Options) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal config: %w", err)
 	}
+	j, err := json.Marshal(nodeopts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal config: %w", err)
+	}
 	return &Config{
 		Options: nodeopts,
+		rawjson: j,
 		raw:     out,
 	}, nil
 }

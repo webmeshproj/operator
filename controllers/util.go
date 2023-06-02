@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,29 +30,48 @@ import (
 
 var ErrLBNotReady = errors.New("load balancer not ready")
 
-func getLBExternalIP(ctx context.Context, cli client.Client, mesh *meshv1.Mesh, group *meshv1.NodeGroup) (string, error) {
+func getLBExternalIPs(ctx context.Context, cli client.Client, mesh *meshv1.Mesh, group *meshv1.NodeGroup) ([]string, error) {
 	var lbService corev1.Service
 	err := cli.Get(ctx, client.ObjectKey{
 		Name:      meshv1.MeshNodeGroupLBName(mesh, group),
 		Namespace: mesh.GetNamespace(),
 	}, &lbService)
 	if err != nil {
-		return "", fmt.Errorf("fetch load balancer service: %w", err)
+		return nil, fmt.Errorf("fetch load balancer service: %w", err)
 	}
+	var externalIPs []string
 	switch lbService.Spec.Type {
 	case corev1.ServiceTypeLoadBalancer:
 		if len(lbService.Status.LoadBalancer.Ingress) == 0 {
-			return "", ErrLBNotReady
+			return nil, ErrLBNotReady
 		}
-		return lbService.Status.LoadBalancer.Ingress[0].IP, nil
+		for _, ingress := range lbService.Status.LoadBalancer.Ingress {
+			externalIPs = append(externalIPs, ingress.IP)
+		}
+		if len(lbService.Spec.IPFamilies) > 0 {
+			// There may be a global IPv6 address under cluster IPs
+			for _, ip := range lbService.Spec.ClusterIPs {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					return nil, fmt.Errorf("parse cluster IP: %w", err)
+				}
+				if !addr.IsPrivate() {
+					externalIPs = append(externalIPs, addr.String())
+				}
+			}
+		}
 	case corev1.ServiceTypeNodePort:
 		// TODO: This is not correct, we need to get the external IP of the node
-		return lbService.Spec.ClusterIP, nil
+		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
 	case corev1.ServiceTypeClusterIP:
-		return lbService.Spec.ClusterIP, nil
+		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
 	default:
-		return "", fmt.Errorf("service has unknown type: %s", lbService.Spec.Type)
+		return nil, fmt.Errorf("service has unknown type: %s", lbService.Spec.Type)
 	}
+	if len(externalIPs) == 0 {
+		return nil, ErrLBNotReady
+	}
+	return externalIPs, nil
 }
 
 func getJoinServer(ctx context.Context, cli client.Client, mesh *meshv1.Mesh) (string, error) {
@@ -69,11 +89,11 @@ func getJoinServer(ctx context.Context, cli client.Client, mesh *meshv1.Mesh) (s
 	bootstrapNodeGroup := bootstrapGroup.Items[0]
 	joinServer := fmt.Sprintf(`%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, &bootstrapNodeGroup), meshv1.DefaultGRPCPort)
 	if bootstrapNodeGroup.Spec.Cluster.Service != nil {
-		externalURL, err := getLBExternalIP(ctx, cli, mesh, &bootstrapNodeGroup)
+		externalURLs, err := getLBExternalIPs(ctx, cli, mesh, &bootstrapNodeGroup)
 		if err != nil {
 			return "", fmt.Errorf("get load balancer external IP: %w", err)
 		}
-		joinServer = fmt.Sprintf(`%s:%d`, externalURL, bootstrapNodeGroup.Spec.Cluster.Service.GRPCPort)
+		joinServer = fmt.Sprintf(`%s:%d`, externalURLs[0], bootstrapNodeGroup.Spec.Cluster.Service.GRPCPort)
 	}
 	return joinServer, nil
 }

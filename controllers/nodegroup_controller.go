@@ -61,6 +61,10 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	if group.GetDeletionTimestamp() != nil {
+		return ctrl.Result{}, r.reconcileDelete(ctx, &group)
+	}
+
 	log.Info("reconciling NodeGroup")
 
 	// Get the mesh object

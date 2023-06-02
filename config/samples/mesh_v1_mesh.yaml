@@ -3,12 +3,12 @@ kind: Mesh
 metadata:
   name: mesh-sample
 spec:
-  ipv4: 10.200.0.0/16
+  # ipv4: 10.200.0.0/16
   issuer:
     create: true
   bootstrap:
+    replicas: 3
     cluster:
-      replicas: 3
       imagePullPolicy: Always
       service:
         type: LoadBalancer

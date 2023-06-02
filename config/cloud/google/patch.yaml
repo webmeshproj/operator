@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator-controller-manager
+  namespace: webmesh-system
+  annotations:
+    iam.gke.io/gcp-service-account: operator-controller-manager@webmeshproj.iam.gserviceaccount.com

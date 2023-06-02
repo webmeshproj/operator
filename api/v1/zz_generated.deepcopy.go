@@ -201,6 +201,11 @@ func (in *NodeGroupClusterConfig) DeepCopyInto(out *NodeGroupClusterConfig) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.PreemptionPolicy != nil {
+		in, out := &in.PreemptionPolicy, &out.PreemptionPolicy
+		*out = new(corev1.PreemptionPolicy)
+		**out = **in
+	}
 	if in.TopologySpreadConstraints != nil {
 		in, out := &in.TopologySpreadConstraints, &out.TopologySpreadConstraints
 		*out = make([]corev1.TopologySpreadConstraint, len(*in))

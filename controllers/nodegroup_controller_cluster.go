@@ -70,7 +70,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 	}
 
 	// Create the service if we are exposing the node group
-	var externalURL string
+	var externalURLs []string
 	if group.Spec.Cluster.Service != nil {
 		lbconfig, checksum, err := resources.NewNodeGroupLBConfigMap(mesh, group)
 		if err != nil {
@@ -80,15 +80,17 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 		toApply = append(toApply, lbconfig,
 			resources.NewNodeGroupLBDeployment(mesh, group, checksum),
 			resources.NewNodeGroupLBService(mesh, group))
-		externalURL = group.Spec.Cluster.Service.ExternalURL
-		if externalURL == "" && group.Spec.Cluster.Service.Type != corev1.ServiceTypeClusterIP {
+		if group.Spec.Cluster.Service.ExternalURL != "" {
+			externalURLs = []string{group.Spec.Cluster.Service.ExternalURL}
+		}
+		if len(externalURLs) == 0 && group.Spec.Cluster.Service.Type != corev1.ServiceTypeClusterIP {
 			// We need to pre-create the service so we can use it as the external URL
 			err = resources.Apply(ctx, cli, toApply)
 			if err != nil {
 				log.Error(err, "unable to apply resources")
 				return ctrl.Result{}, err
 			}
-			externalURL, err = getLBExternalIP(ctx, cli, mesh, group)
+			lbIPs, err := getLBExternalIPs(ctx, cli, mesh, group)
 			if err != nil {
 				if errors.Is(err, ErrLBNotReady) {
 					log.Info("waiting for load balancer to be ready")
@@ -97,6 +99,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 				log.Error(err, "unable to get load balancer external IP")
 				return ctrl.Result{}, err
 			}
+			externalURLs = append(externalURLs, lbIPs...)
 			// Reset toApply
 			toApply = make([]client.Object, 0)
 		}
@@ -104,7 +107,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 
 	// Create Node group resources
 	toApply = append(toApply, resources.NewNodeGroupHeadlessService(mesh, group))
-	conf, err := r.buildClusterNodeConfig(ctx, mesh, group, externalURL)
+	conf, err := r.buildClusterNodeConfig(ctx, mesh, group, externalURLs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -121,7 +124,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 	return ctrl.Result{}, nil
 }
 
-func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURL string) (*nodeconfig.Config, error) {
+func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURLs []string) (*nodeconfig.Config, error) {
 	var isBootstrap bool
 	if val, ok := group.GetAnnotations()[meshv1.BootstrapNodeGroupAnnotation]; ok && val == "true" {
 		isBootstrap = true
@@ -129,16 +132,18 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 	var primaryEndpoint string
 	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort)
 	wireguardEndpoints := []string{internalEndpoint}
-	if externalURL != "" {
-		primaryEndpoint = externalURL
+	if len(externalURLs) > 0 {
+		primaryEndpoint = externalURLs[0]
 		startPort := func() int32 {
 			if group.Spec.Cluster.Service != nil {
 				return int32(group.Spec.Cluster.Service.WireGuardPort)
 			}
 			return meshv1.DefaultWireGuardPort
 		}()
-		externalWGEndpoint := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`, primaryEndpoint, meshv1.DefaultDataDirectory, startPort)
-		wireguardEndpoints = append(wireguardEndpoints, externalWGEndpoint)
+		for _, url := range externalURLs {
+			externalWGEndpoint := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`, url, meshv1.DefaultDataDirectory, startPort)
+			wireguardEndpoints = append(wireguardEndpoints, externalWGEndpoint)
+		}
 	} else if isBootstrap {
 		primaryEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
 	}

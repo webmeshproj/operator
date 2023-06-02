@@ -5457,7 +5457,6 @@ spec:
                           the node containers in this group.
                         type: object
                       preemptionPolicy:
-                        default: PreemptLowerPriority
                         description: PreemptionPolicy is the preemption policy to
                           use for the node containers in this group.
                         type: string

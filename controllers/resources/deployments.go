@@ -179,7 +179,7 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 					},
 					Affinity:                  group.Spec.Cluster.Affinity,
 					Tolerations:               group.Spec.Cluster.Tolerations,
-					PreemptionPolicy:          &group.Spec.Cluster.PreemptionPolicy,
+					PreemptionPolicy:          group.Spec.Cluster.PreemptionPolicy,
 					TopologySpreadConstraints: group.Spec.Cluster.TopologySpreadConstraints,
 					ResourceClaims:            group.Spec.Cluster.ResourceClaims,
 				},

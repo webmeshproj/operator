@@ -211,7 +211,7 @@ resource "helm_release" "cert_manager" {
     value = "true"
   }
 
-  depends_on = [google_container_cluster.this]
+  depends_on = [google_container_node_pool.this]
 }
 
 # Operator workload identity

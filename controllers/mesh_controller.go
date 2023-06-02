@@ -106,8 +106,7 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	// Get the LB service
-	var externalIP string
-	externalIP, err := getLBExternalIP(ctx, r.Client, mesh, mesh.BootstrapGroup())
+	externalIPs, err := getLBExternalIPs(ctx, r.Client, mesh, mesh.BootstrapGroup())
 	if err != nil {
 		log.Error(err, "unable to get LB external IP")
 		if errors.Is(err, ErrLBNotReady) {
@@ -138,7 +137,7 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 		{
 			Name: mesh.GetName(),
 			Cluster: ctlconfig.ClusterConfig{
-				Server:                   fmt.Sprintf("%s:%d", externalIP, mesh.Spec.Bootstrap.Cluster.Service.GRPCPort),
+				Server:                   fmt.Sprintf("%s:%d", externalIPs[0], mesh.Spec.Bootstrap.Cluster.Service.GRPCPort),
 				TLSVerifyChainOnly:       true,
 				CertificateAuthorityData: base64.StdEncoding.EncodeToString(secret.Data[cmmeta.TLSCAKey]),
 			},

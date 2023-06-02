@@ -3,8 +3,8 @@ kind: NodeGroup
 metadata:
   name: nodegroup-sample
 spec:
+  replicas: 1
   cluster:
-    replicas: 1
     imagePullPolicy: Always
   config:
     logLevel: debug

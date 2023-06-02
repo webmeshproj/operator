@@ -230,7 +230,7 @@ func NewNodeGroupStatefulSet(mesh *meshv1.Mesh, group *meshv1.NodeGroup, configC
 					},
 					Affinity:                  spec.Affinity,
 					Tolerations:               spec.Tolerations,
-					PreemptionPolicy:          &spec.PreemptionPolicy,
+					PreemptionPolicy:          spec.PreemptionPolicy,
 					TopologySpreadConstraints: spec.TopologySpreadConstraints,
 					ResourceClaims:            spec.ResourceClaims,
 				},

@@ -35,9 +35,9 @@ var (
 
 // OwnerReferences returns the owner references for the given object.
 func OwnerReferences(obj client.Object) []metav1.OwnerReference {
-	return []metav1.OwnerReference{
-		*metav1.NewControllerRef(obj, obj.GetObjectKind().GroupVersionKind()),
-	}
+	ref := metav1.NewControllerRef(obj, obj.GetObjectKind().GroupVersionKind())
+	ref.BlockOwnerDeletion = &[]bool{true}[0]
+	return []metav1.OwnerReference{*ref}
 }
 
 // MeshSelfSignerName returns the name of the self-signer for the given Mesh.

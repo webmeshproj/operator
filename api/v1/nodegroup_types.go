@@ -120,9 +120,8 @@ type NodeGroupClusterConfig struct {
 
 	// PreemptionPolicy is the preemption policy to use for the node
 	// containers in this group.
-	// +kubebuilder:default:="PreemptLowerPriority"
 	// +optional
-	PreemptionPolicy corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
+	PreemptionPolicy *corev1.PreemptionPolicy `json:"preemptionPolicy,omitempty"`
 
 	// TopologySpreadConstraints is the topology spread constraints to use
 	// for the node containers in this group.
@@ -177,9 +176,6 @@ type NodeGroupClusterConfig struct {
 func (c *NodeGroupClusterConfig) Default() {
 	if c.ImagePullPolicy == "" {
 		c.ImagePullPolicy = corev1.PullIfNotPresent
-	}
-	if c.PreemptionPolicy == "" {
-		c.PreemptionPolicy = corev1.PreemptLowerPriority
 	}
 	if c.Service != nil {
 		c.Service.Default()
