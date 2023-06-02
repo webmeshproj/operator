@@ -28,10 +28,9 @@ type NodeGroupSpec struct {
 	// +optional
 	Image string `json:"image,omitempty"`
 
-	// Cluster is the configuration for a group of nodes running in a
-	// Kubernetes cluster.
+	// Mesh is a reference to the Mesh this group belongs to.
 	// +optional
-	Cluster *NodeGroupClusterConfig `json:"cluster,omitempty"`
+	Mesh corev1.ObjectReference `json:"mesh,omitempty"`
 
 	// ConfigGroup is the name of the configuration group from the Mesh
 	// to use for this group. If not specified, the default configuration
@@ -44,9 +43,10 @@ type NodeGroupSpec struct {
 	// +optional
 	Config *NodeGroupConfig `json:"config,omitempty"`
 
-	// Mesh is a reference to the Mesh this group belongs to.
+	// Cluster is the configuration for a group of nodes running in a
+	// Kubernetes cluster.
 	// +optional
-	Mesh corev1.ObjectReference `json:"mesh,omitempty"`
+	Cluster *NodeGroupClusterConfig `json:"cluster,omitempty"`
 }
 
 // NodeGroupClusterConfig is the configuration for a group of nodes running in

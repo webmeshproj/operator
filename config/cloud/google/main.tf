@@ -6,6 +6,9 @@ terraform {
     kubernetes = {
       source = "hashicorp/kubernetes"
     }
+    helm = {
+      source = "hashicorp/helm"
+    }
   }
 }
 
@@ -13,18 +16,32 @@ variable "project_id" {
   type = string
 }
 
+variable "region" {
+  type    = string
+  default = "us-central1"
+}
+
+variable "name" {
+  type    = string
+  default = "webmesh"
+}
+
+variable "email" {
+  type    = string
+  default = ""
+}
+
 data "google_client_config" "default" {}
 
 locals {
-  name                  = "webmesh"
-  region                = "us-central1"
-  gke_pods_name         = "${local.name}-gke-pods"
-  gke_services_name     = "${local.name}-gke-services"
-  private_internal_cidr = "10.0.0.0/16"
-  private_external_cidr = "10.254.0.0/16"
-  pod_cidr_range        = "10.10.0.0/16"
-  svc_cidr_range        = "10.20.0.0/16"
-
+  name                   = var.name
+  region                 = var.region
+  gke_pods_name          = "${local.name}-gke-pods"
+  gke_services_name      = "${local.name}-gke-services"
+  private_internal_cidr  = "10.0.0.0/16"
+  private_external_cidr  = "10.254.0.0/16"
+  pod_cidr_range         = "10.10.0.0/16"
+  svc_cidr_range         = "10.20.0.0/16"
   cluster_endpoint       = google_container_cluster.this.endpoint
   cluster_host           = "https://${local.cluster_endpoint}"
   cluster_ca_certificate = base64decode(google_container_cluster.this.master_auth.0.cluster_ca_certificate)
@@ -32,13 +49,21 @@ locals {
 
 provider "google" {
   project = var.project_id
-  region  = local.region
+  region  = var.region
 }
 
 provider "kubernetes" {
   host                   = local.cluster_host
   cluster_ca_certificate = local.cluster_ca_certificate
   token                  = data.google_client_config.default.access_token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = local.cluster_host
+    cluster_ca_certificate = local.cluster_ca_certificate
+    token                  = data.google_client_config.default.access_token
+  }
 }
 
 # VPC Network
@@ -173,6 +198,22 @@ resource "google_container_node_pool" "this" {
   }
 }
 
+# Cert Manager
+
+resource "helm_release" "cert_manager" {
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  depends_on = [google_container_cluster.this]
+}
+
 # Operator workload identity
 
 module "operator_workload_identity" {
@@ -188,6 +229,9 @@ module "operator_workload_identity" {
   use_existing_k8s_sa = true
 }
 
+output "operator_workload_identity" {
+  value = module.operator_workload_identity
+}
 
 # Firewall Rules
 
@@ -219,4 +263,31 @@ resource "google_compute_firewall" "routers_ipv6" {
   direction     = "INGRESS"
   source_ranges = ["::/0"]
   target_tags   = ["mesh-nodes"]
+}
+
+resource "google_compute_firewall" "iap_tcp" {
+  count       = var.email != "" ? 1 : 0
+  project     = var.project_id
+  name        = "${local.name}-iap-tcp"
+  network     = google_compute_network.this.name
+  description = "Allow access from IAP"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  direction     = "INGRESS"
+  source_ranges = ["35.235.240.0/20"]
+}
+
+# IAP Tunnel Access
+
+resource "google_iap_tunnel_iam_binding" "tcp_access" {
+  count   = var.email != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/iap.tunnelResourceAccessor"
+  members = [
+    "user:${var.email}",
+  ]
 }
