@@ -97,6 +97,13 @@ func (r *meshValidator) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	warnings := make(admission.Warnings, 0)
 	meshlog.Info("validating create", "name", o.Name)
 
+	if o.Spec.Bootstrap.GoogleCloud != nil {
+		return nil, field.Invalid(
+			field.NewPath("spec", "bootstrap", "googleCloud"),
+			o.Spec.Bootstrap.GoogleCloud,
+			"non-cluster bootstrap groups are not supported")
+	}
+
 	// Validate bootstrap node group
 	if o.Spec.Bootstrap.ConfigGroup != "" {
 		if _, ok := o.Spec.ConfigGroups[o.Spec.Bootstrap.ConfigGroup]; !ok {
@@ -139,10 +146,10 @@ func (r *meshValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			"ipv4 is immutable")
 	}
 	if old.Spec.Bootstrap.Cluster != nil {
-		if old.Spec.Bootstrap.Cluster.Replicas != new.Spec.Bootstrap.Cluster.Replicas {
+		if old.Spec.Bootstrap.Replicas != new.Spec.Bootstrap.Replicas {
 			return nil, field.Invalid(
 				field.NewPath("spec", "bootstrap", "replicas"),
-				new.Spec.Bootstrap.Cluster.Replicas,
+				new.Spec.Bootstrap.Replicas,
 				"bootstrap.replicas is immutable")
 		}
 		if old.Spec.Bootstrap.Cluster.PVCSpec != nil && new.Spec.Bootstrap.Cluster.PVCSpec == nil {

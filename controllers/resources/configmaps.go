@@ -78,7 +78,7 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (cm *co
 	}
 	udprouters := make(map[string]any)
 	udpservices := make(map[string]any)
-	for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
+	for i := 0; i < int(*group.Spec.Replicas); i++ {
 		udprouters[fmt.Sprintf("wg%d", i)] = map[string]any{
 			"entryPoints": []string{fmt.Sprintf("wg%d", i)},
 			"service":     fmt.Sprintf("wg%d", i),

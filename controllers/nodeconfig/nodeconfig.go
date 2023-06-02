@@ -51,6 +51,10 @@ type Options struct {
 	IsPersistent bool
 	// CertDir is the cert directory.
 	CertDir string
+	// DetectEndpoints is true if endpoints should be detected.
+	DetectEndpoints bool
+	// AllowRemoteDetection is true if remote detection is allowed.
+	AllowRemoteDetection bool
 }
 
 // Config represents a rendered node group config.
@@ -90,13 +94,15 @@ func New(opts Options) (*Config, error) {
 
 	// Global options
 	nodeopts.Global = &global.Options{
-		LogLevel:        groupcfg.LogLevel,
-		TLSCertFile:     fmt.Sprintf(`%s/tls.crt`, opts.CertDir),
-		TLSKeyFile:      fmt.Sprintf(`%s/tls.key`, opts.CertDir),
-		TLSCAFile:       fmt.Sprintf(`%s/ca.crt`, opts.CertDir),
-		MTLS:            true,
-		VerifyChainOnly: mesh.Spec.Issuer.Create,
-		NoIPv6:          groupcfg.NoIPv6,
+		LogLevel:             groupcfg.LogLevel,
+		TLSCertFile:          fmt.Sprintf(`%s/tls.crt`, opts.CertDir),
+		TLSKeyFile:           fmt.Sprintf(`%s/tls.key`, opts.CertDir),
+		TLSCAFile:            fmt.Sprintf(`%s/ca.crt`, opts.CertDir),
+		MTLS:                 true,
+		VerifyChainOnly:      mesh.Spec.Issuer.Create,
+		NoIPv6:               groupcfg.NoIPv6,
+		DetectEndpoints:      opts.DetectEndpoints,
+		AllowRemoteDetection: opts.AllowRemoteDetection,
 	}
 
 	// Endpoint and zone awareness options

@@ -5675,12 +5675,6 @@ spec:
                               PersistentVolume backing this claim.
                             type: string
                         type: object
-                      replicas:
-                        default: 1
-                        description: Replicas is the number of replicas to run for
-                          this group.
-                        format: int32
-                        type: integer
                       resourceClaims:
                         description: ResourceClaims is the resource claims to use
                           for the node containers in this group.
@@ -6122,6 +6116,58 @@ spec:
                       configuration will be used. Configurations can be further customized
                       by specifying a Config.
                     type: string
+                  googleCloud:
+                    description: GoogleCloud is the configuration for a group of nodes
+                      running in Google Cloud.
+                    properties:
+                      credentials:
+                        description: Credentials is the credentials to use for the
+                          Google Cloud API. If omitted, workload identity will be
+                          used.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              TODO: Add other useful fields. apiVersion, kind, uid?'
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      machineType:
+                        description: MachineType is the machine type of the router.
+                        type: string
+                      projectID:
+                        description: ProjectID is the ID of the Google Cloud project.
+                        type: string
+                      region:
+                        description: Region is the region where the router resides.
+                        type: string
+                      subnetwork:
+                        description: Subnetwork is the name of the subnetwork to place
+                          the WAN interface.
+                        type: string
+                      tags:
+                        description: Tags is a list of instance tags to which this
+                          router applies.
+                        items:
+                          type: string
+                        type: array
+                      zone:
+                        description: Zone is the zone where the router resides.
+                        type: string
+                    required:
+                    - machineType
+                    - subnetwork
+                    - zone
+                    type: object
                   image:
                     default: ghcr.io/webmeshproj/node:latest
                     description: Image is the image to use for the node.
@@ -6164,6 +6210,12 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
+                  replicas:
+                    default: 1
+                    description: Replicas is the number of replicas to run for this
+                      group.
+                    format: int32
+                    type: integer
                 type: object
               configGroups:
                 additionalProperties:

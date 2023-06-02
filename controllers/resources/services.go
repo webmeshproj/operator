@@ -98,7 +98,7 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.S
 						Protocol:   corev1.ProtocolTCP,
 					},
 				}
-				for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
+				for i := 0; i < int(*group.Spec.Replicas); i++ {
 					ports = append(ports, corev1.ServicePort{
 						Name:       fmt.Sprintf("wireguard-%d", i),
 						Port:       spec.WireGuardPort + int32(i),

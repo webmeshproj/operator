@@ -18,21 +18,18 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"time"
 
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
-	"github.com/webmeshproj/operator/controllers/nodeconfig"
 	"github.com/webmeshproj/operator/controllers/resources"
 )
 
@@ -41,6 +38,8 @@ type NodeGroupReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+const foregroundDeletion = "nodegroups.mesh.webmesh.io"
 
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
@@ -63,7 +62,6 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	log.Info("reconciling NodeGroup")
-	toApply := make([]client.Object, 0)
 
 	// Get the mesh object
 	var mesh meshv1.Mesh
@@ -80,159 +78,58 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	cli := r.Client
-	if group.Spec.Cluster.Kubeconfig != nil {
-		var secret corev1.Secret
-		err := r.Get(ctx, client.ObjectKey{
-			Name:      group.Spec.Cluster.Kubeconfig.Name,
-			Namespace: group.GetNamespace(),
-		}, &secret)
-		if err != nil {
-			log.Error(err, "unable to fetch kubeconfig secret")
-			return ctrl.Result{}, err
-		}
-		kubeconfig, ok := secret.Data[group.Spec.Cluster.Kubeconfig.Key]
-		if !ok {
-			err := errors.New("kubeconfig secret does not contain key")
-			log.Error(err, "unable to fetch kubeconfig secret")
-			return ctrl.Result{}, err
-		}
-		cfg, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
-		if err != nil {
-			log.Error(err, "unable to create client config")
-			return ctrl.Result{}, err
-		}
-		cli, err = client.New(cfg, client.Options{})
-		if err != nil {
-			log.Error(err, "unable to create client")
-			return ctrl.Result{}, err
-		}
-	}
-
-	// Create the service if we are exposing the node group
-	var externalURL string
-	if group.Spec.Cluster.Service != nil {
-		lbconfig, checksum, err := resources.NewNodeGroupLBConfigMap(&mesh, &group)
-		if err != nil {
-			log.Error(err, "unable to create config map")
-			return ctrl.Result{}, err
-		}
-		toApply = append(toApply, lbconfig,
-			resources.NewNodeGroupLBDeployment(&mesh, &group, checksum),
-			resources.NewNodeGroupLBService(&mesh, &group))
-		externalURL = group.Spec.Cluster.Service.ExternalURL
-		if externalURL == "" && group.Spec.Cluster.Service.Type != corev1.ServiceTypeClusterIP {
-			// We need to pre-create the service so we can use it as the external URL
-			err = resources.Apply(ctx, cli, toApply)
-			if err != nil {
-				log.Error(err, "unable to apply resources")
-				return ctrl.Result{}, err
-			}
-			externalURL, err = getLBExternalIP(ctx, cli, &mesh, &group)
-			if err != nil {
-				if errors.Is(err, ErrLBNotReady) {
-					log.Info("waiting for load balancer to be ready")
-					return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-				}
-				log.Error(err, "unable to get load balancer external IP")
-				return ctrl.Result{}, err
-			}
-			// Reset toApply
-			toApply = make([]client.Object, 0)
-		}
-	}
-
-	// Create Node group resources
-	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, &group))
-	for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
+	// We need certificates for the node group no matter where they are going
+	var toApply []client.Object
+	for i := 0; i < int(*group.Spec.Replicas); i++ {
 		toApply = append(toApply, resources.NewNodeCertificate(&mesh, &group, i))
 	}
-	conf, err := r.buildNodeConfig(ctx, &mesh, &group, externalURL)
+	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
+		log.Error(err, "unable to apply certificates")
+		return ctrl.Result{}, err
+	}
+
+	var res ctrl.Result
+	var err error
+	if group.Spec.GoogleCloud != nil {
+		res, err = r.reconcileGoogleCloudNodeGroup(ctx, &mesh, &group)
+	} else if group.Spec.Cluster != nil {
+		res, err = r.reconcileClusterNodeGroup(ctx, &mesh, &group)
+	} else {
+		err = fmt.Errorf("no deployment configuration provided")
+	}
 	if err != nil {
-		return ctrl.Result{}, err
-	}
-	toApply = append(toApply,
-		resources.NewNodeGroupConfigMap(&mesh, &group, conf),
-		resources.NewNodeGroupStatefulSet(&mesh, &group, conf.Checksum()))
-
-	// Apply any remaining resources
-	if err := resources.Apply(ctx, cli, toApply); err != nil {
-		log.Error(err, "unable to apply resources")
+		log.Error(err, "unable to reconcile NodeGroup")
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// Set finalizers
+	if !controllerutil.ContainsFinalizer(&group, foregroundDeletion) {
+		log.Info("Adding finalizer to node group")
+		controllerutil.AddFinalizer(&group, foregroundDeletion)
+		if err = r.Update(ctx, &group); err != nil {
+			err = fmt.Errorf("add finalizer to node group: %w", err)
+		}
+	}
+	return res, err
 }
 
-func (r *NodeGroupReconciler) buildNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURL string) (*nodeconfig.Config, error) {
-	var isBootstrap bool
-	if val, ok := group.GetAnnotations()[meshv1.BootstrapNodeGroupAnnotation]; ok && val == "true" {
-		isBootstrap = true
+func (r *NodeGroupReconciler) reconcileDelete(ctx context.Context, group *meshv1.NodeGroup) error {
+	log := log.FromContext(ctx)
+	var err error
+	if group.Spec.GoogleCloud != nil {
+		log.Info("Deleting Google Cloud NodeGroup resources")
+		err = r.deleteGoogleCloudNodeGroup(ctx, group)
 	}
-	var primaryEndpoint string
-	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort)
-	wireguardEndpoints := []string{internalEndpoint}
-	if externalURL != "" {
-		primaryEndpoint = externalURL
-		startPort := func() int32 {
-			if group.Spec.Cluster.Service != nil {
-				return int32(group.Spec.Cluster.Service.WireGuardPort)
-			}
-			return meshv1.DefaultWireGuardPort
-		}()
-		externalWGEndpoint := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`, primaryEndpoint, meshv1.DefaultDataDirectory, startPort)
-		wireguardEndpoints = append(wireguardEndpoints, externalWGEndpoint)
-	} else if isBootstrap {
-		primaryEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
-	}
-	var advertiseAddress string
-	var joinServer string
-	bootstrapServers := make(map[string]string)
-	if isBootstrap {
-		if *group.Spec.Cluster.Replicas > 1 {
-			advertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultRaftPort)
-			for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
-				bootstrapServers[meshv1.MeshNodeHostname(mesh, group, i)] = fmt.Sprintf("%s:%d", meshv1.MeshNodeClusterFQDN(mesh, group, i), meshv1.DefaultRaftPort)
-			}
-		}
-	} else {
-		// Get a join server from the bootstrap node group
-		var bootstrapGroup meshv1.NodeGroupList
-		err := r.List(ctx, &bootstrapGroup,
-			client.InNamespace(mesh.GetNamespace()),
-			client.MatchingLabels(meshv1.MeshBootstrapGroupSelector(mesh)))
-		if err != nil {
-			return nil, fmt.Errorf("list bootstrap node group: %w", err)
-		}
-		if len(bootstrapGroup.Items) == 0 {
-			return nil, fmt.Errorf("no bootstrap node group found")
-		}
-		bootstrapNodeGroup := bootstrapGroup.Items[0]
-		joinServer = fmt.Sprintf(`%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, &bootstrapNodeGroup), meshv1.DefaultGRPCPort)
-		if bootstrapNodeGroup.Spec.Cluster.Service != nil {
-			externalURL, err := getLBExternalIP(ctx, r.Client, mesh, &bootstrapNodeGroup)
-			if err != nil {
-				return nil, fmt.Errorf("get load balancer external IP: %w", err)
-			}
-			joinServer = fmt.Sprintf(`%s:%d`, externalURL, bootstrapNodeGroup.Spec.Cluster.Service.GRPCPort)
-		}
-	}
-	conf, err := nodeconfig.New(nodeconfig.Options{
-		Mesh:               mesh,
-		Group:              group,
-		AdvertiseAddress:   advertiseAddress,
-		PrimaryEndpoint:    primaryEndpoint,
-		WireGuardEndpoints: wireguardEndpoints,
-		IsBootstrap:        isBootstrap,
-		BootstrapServers:   bootstrapServers,
-		JoinServer:         joinServer,
-		IsPersistent:       group.Spec.Cluster.PVCSpec != nil,
-		CertDir:            fmt.Sprintf(`%s/{{ env "POD_NAME" }}`, meshv1.DefaultTLSDirectory),
-	})
+	// TODO: Add other providers here
 	if err != nil {
-		return nil, fmt.Errorf("build node config: %w", err)
+		return err
 	}
-	return conf, nil
+	// Remove the finalizer
+	controllerutil.RemoveFinalizer(group, foregroundDeletion)
+	if err := r.Update(ctx, group); err != nil {
+		return fmt.Errorf("failed to remove finalizer from node group: %w", err)
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -23,6 +23,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,20 +53,7 @@ var _ webhook.Defaulter = &NodeGroup{}
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *NodeGroup) Default() {
 	nodegrouplog.Info("defaulting", "name", r.Name)
-
-	// Ensure a default config
-	if r.Spec.ConfigGroup == "" && r.Spec.Config == nil {
-		r.Spec.Config = &NodeGroupConfig{}
-		r.Spec.Config.Default()
-	} else if r.Spec.Config != nil {
-		r.Spec.Config.Default()
-	}
-
-	// TODO: Handle non-cluster node groups
-	if r.Spec.Cluster == nil {
-		r.Spec.Cluster = &NodeGroupClusterConfig{}
-	}
-	r.Spec.Cluster.Default()
+	r.Spec.Default()
 }
 
 //+kubebuilder:webhook:path=/validate-mesh-webmesh-io-v1-nodegroup,mutating=false,failurePolicy=fail,sideEffects=None,groups=mesh.webmesh.io,resources=nodegroups,verbs=create;update,versions=v1,name=vnodegroup.kb.io,admissionReviewVersions=v1
@@ -82,12 +70,18 @@ type nodeGroupValidator struct {
 func (r *nodeGroupValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	o := obj.(*NodeGroup)
 	nodegrouplog.Info("validating create", "name", o.Name)
+	if o.Spec.GoogleCloud != nil {
+		if err := o.Spec.GoogleCloud.Validate(field.NewPath("spec").Child("googleCloud")); err != nil {
+			return nil, err
+		}
+	}
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *nodeGroupValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	o := oldObj.(*NodeGroup)
+	n := newObj.(*NodeGroup)
 	nodegrouplog.Info("validating update", "name", o.Name)
 	if val, ok := o.GetAnnotations()[BootstrapNodeGroupAnnotation]; ok && val == "true" {
 		// Bootstrap group can only be mutated by the controller
@@ -116,6 +110,11 @@ func (r *nodeGroupValidator) ValidateUpdate(ctx context.Context, oldObj, newObj 
 		}
 		if req.UserInfo.UID != r.localID {
 			return nil, errors.New("bootstrap node groups can only be mutated by the Mesh controller")
+		}
+	}
+	if n.Spec.GoogleCloud != nil {
+		if err := n.Spec.GoogleCloud.Validate(field.NewPath("spec").Child("googleCloud")); err != nil {
+			return nil, err
 		}
 	}
 	return nil, nil

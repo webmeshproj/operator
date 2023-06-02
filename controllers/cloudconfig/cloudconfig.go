@@ -27,6 +27,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	meshv1 "github.com/webmeshproj/operator/api/v1"
 	"github.com/webmeshproj/operator/controllers/nodeconfig"
 )
 
@@ -61,7 +62,7 @@ type Options struct {
 }
 
 // New returns a new cloud config.
-func New(opts *Options) (*Config, error) {
+func New(opts Options) (*Config, error) {
 	out := cloudConfig{
 		WriteFiles: []writeFile{
 			{
@@ -74,7 +75,7 @@ func New(opts *Options) (*Config, error) {
 				Path:        "/etc/systemd/system/node.service",
 				Permissions: "0644",
 				Owner:       "root",
-				Content:     nodeContainerUnit(opts.Image),
+				Content:     nodeContainerUnit(&opts),
 			},
 			{
 				Path:        "/etc/webmesh/config.yaml",
@@ -83,25 +84,26 @@ func New(opts *Options) (*Config, error) {
 				Content:     string(opts.Config.Raw()),
 			},
 			{
-				Path:        "/etc/webmesh/tls.crt",
+				Path:        fmt.Sprintf("%s/tls.crt", meshv1.DefaultTLSDirectory),
 				Permissions: "0644",
 				Owner:       "root",
 				Content:     string(opts.TLSCert),
 			},
 			{
-				Path:        "/etc/webmesh/tls.key",
+				Path:        fmt.Sprintf("%s/tls.key", meshv1.DefaultTLSDirectory),
 				Permissions: "0644",
 				Owner:       "root",
 				Content:     string(opts.TLSKey),
 			},
 			{
-				Path:        "/etc/webmesh/ca.crt",
+				Path:        fmt.Sprintf("%s/ca.crt", meshv1.DefaultTLSDirectory),
 				Permissions: "0644",
 				Owner:       "root",
 				Content:     string(opts.CA),
 			},
 		},
 		RunCmd: []string{
+			fmt.Sprintf("mkdir -p %s", opts.Config.Options.Store.DataDir),
 			"systemctl daemon-reload",
 			"systemctl enable docker",
 			"systemctl start docker",
@@ -130,12 +132,14 @@ type writeFile struct {
 	Content     string `yaml:"content"`
 }
 
-func nodeContainerUnit(image string) string {
+func nodeContainerUnit(opts *Options) string {
 	var buf bytes.Buffer
 	_ = nodeContainerUnitTemplate.Execute(&buf, struct {
-		Image string
+		Image   string
+		DataDir string
 	}{
-		Image: image,
+		Image:   opts.Image,
+		DataDir: opts.Config.Options.Store.DataDir,
 	})
 	return buf.String()
 }
@@ -146,7 +150,8 @@ Description=Configures the host firewall
 [Service]
 Type=oneshot
 RemainAfterExit=true
-ExecStart=/sbin/iptables -A INPUT -j ACCEPT`
+ExecStart=/sbin/iptables -A INPUT -j ACCEPT
+`
 
 var nodeContainerUnitTemplate = template.Must(template.New("nodecontainer").Parse(`[Unit]
 Description=node
@@ -165,7 +170,8 @@ ExecStart=/usr/bin/docker run --rm \
   -v /lib/modules:/lib/modules \
   -v /dev/net/tun:/dev/net/tun \
   -v /etc/webmesh:/etc/webmesh \
-  {{ .Image }}
+  -v {{ .DataDir }}:{{ .DataDir }} \
+  {{ .Image }} --config /etc/webmesh/config.yaml
 ExecStop=/usr/bin/docker kill node
 Restart=always
 

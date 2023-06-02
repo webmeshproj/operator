@@ -69,7 +69,7 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 									"--entrypoints.traefik.address=:9000/tcp",
 									"--entrypoints.grpc.address=:8443/tcp",
 								}
-								for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
+								for i := 0; i < int(*group.Spec.Replicas); i++ {
 									args = append(args,
 										fmt.Sprintf("--entrypoints.wg%d.address=:%d/udp",
 											i, group.Spec.Cluster.Service.WireGuardPort+int32(i)))
@@ -91,7 +91,7 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 										Protocol:      corev1.ProtocolTCP,
 									},
 								}
-								for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
+								for i := 0; i < int(*group.Spec.Replicas); i++ {
 									ports = append(ports,
 										corev1.ContainerPort{
 											Name:          fmt.Sprintf("wg%d", i),
