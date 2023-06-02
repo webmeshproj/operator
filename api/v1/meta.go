@@ -196,3 +196,12 @@ func NodeGroupLBSelector(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels[NodeGroupLBLabel] = "true"
 	return labels
 }
+
+// MeshBootstrapGroupSelector returns the selector for a Mesh's bootstrap node group.
+func MeshBootstrapGroupSelector(mesh *Mesh) map[string]string {
+	return map[string]string{
+		MeshNameLabel:                mesh.GetName(),
+		MeshNamespaceLabel:           mesh.GetNamespace(),
+		BootstrapNodeGroupAnnotation: "true",
+	}
+}

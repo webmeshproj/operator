@@ -48,6 +48,7 @@ const (
 	// ConfigChecksumAnnotation is the annotation to use for configmap checksums.
 	ConfigChecksumAnnotation = "webmesh.io/config-checksum"
 	// BootstrapNodeGroupAnnotation is the annotation to use for bootstrap node groups.
-	// This should only be set by the controller for bootstrap node groups.
+	// This should only be set by the controller for bootstrap node groups. It is also
+	// used as a label selector for bootstrap node groups.
 	BootstrapNodeGroupAnnotation = "webmesh.io/bootstrap-nodegroup"
 )

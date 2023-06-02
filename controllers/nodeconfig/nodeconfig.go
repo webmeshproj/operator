@@ -45,6 +45,8 @@ type Options struct {
 	IsBootstrap bool
 	// BootstrapServers are the bootstrap servers.
 	BootstrapServers map[string]string
+	// JoinServer is the join server.
+	JoinServer string
 	// IsPersistent is true if this is a persistent node group.
 	IsPersistent bool
 	// CertDir is the cert directory.
@@ -118,6 +120,11 @@ func New(opts Options) (*Config, error) {
 			}
 			nodeopts.Store.Options.BootstrapServers = strings.Join(bootstrapServers, ",")
 		}
+	} else {
+		if opts.JoinServer == "" {
+			return nil, fmt.Errorf("join server is required for non bootstrap node groups")
+		}
+		nodeopts.Store.Join = opts.JoinServer
 	}
 
 	// Storage options

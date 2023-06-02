@@ -2,4 +2,11 @@ apiVersion: mesh.webmesh.io/v1
 kind: NodeGroup
 metadata:
   name: nodegroup-sample
-spec: {}
+spec:
+  cluster:
+    replicas: 1
+    imagePullPolicy: Always
+  config:
+    logLevel: debug
+  mesh:
+    name: mesh-sample

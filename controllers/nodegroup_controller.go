@@ -143,19 +143,34 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Create Node group resources
-
 	toApply = append(toApply, resources.NewNodeGroupHeadlessService(&mesh, &group))
 	for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
 		toApply = append(toApply, resources.NewNodeCertificate(&mesh, &group, i))
 	}
+	conf, err := r.buildNodeConfig(ctx, &mesh, &group, externalURL)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	toApply = append(toApply,
+		resources.NewNodeGroupConfigMap(&mesh, &group, conf),
+		resources.NewNodeGroupStatefulSet(&mesh, &group, conf.Checksum()))
 
-	// Build out the configuration
+	// Apply any remaining resources
+	if err := resources.Apply(ctx, cli, toApply); err != nil {
+		log.Error(err, "unable to apply resources")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *NodeGroupReconciler) buildNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURL string) (*nodeconfig.Config, error) {
 	var isBootstrap bool
 	if val, ok := group.GetAnnotations()[meshv1.BootstrapNodeGroupAnnotation]; ok && val == "true" {
 		isBootstrap = true
 	}
 	var primaryEndpoint string
-	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(&mesh, &group), meshv1.DefaultWireGuardPort)
+	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort)
 	wireguardEndpoints := []string{internalEndpoint}
 	if externalURL != "" {
 		primaryEndpoint = externalURL
@@ -168,46 +183,56 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		externalWGEndpoint := fmt.Sprintf(`%s:{{ add (intFile "%s/ordinal") %d }}`, primaryEndpoint, meshv1.DefaultDataDirectory, startPort)
 		wireguardEndpoints = append(wireguardEndpoints, externalWGEndpoint)
 	} else if isBootstrap {
-		primaryEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`, meshv1.MeshNodeGroupHeadlessServiceFQDN(&mesh, &group))
+		primaryEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
 	}
 	var advertiseAddress string
+	var joinServer string
 	bootstrapServers := make(map[string]string)
 	if isBootstrap {
 		if *group.Spec.Cluster.Replicas > 1 {
-			advertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(&mesh, &group), meshv1.DefaultRaftPort)
+			advertiseAddress = fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultRaftPort)
 			for i := 0; i < int(*group.Spec.Cluster.Replicas); i++ {
-				bootstrapServers[meshv1.MeshNodeHostname(&mesh, &group, i)] = fmt.Sprintf("%s:%d", meshv1.MeshNodeClusterFQDN(&mesh, &group, i), meshv1.DefaultRaftPort)
+				bootstrapServers[meshv1.MeshNodeHostname(mesh, group, i)] = fmt.Sprintf("%s:%d", meshv1.MeshNodeClusterFQDN(mesh, group, i), meshv1.DefaultRaftPort)
 			}
+		}
+	} else {
+		// Get a join server from the bootstrap node group
+		var bootstrapGroup meshv1.NodeGroupList
+		err := r.List(ctx, &bootstrapGroup,
+			client.InNamespace(mesh.GetNamespace()),
+			client.MatchingLabels(meshv1.MeshBootstrapGroupSelector(mesh)))
+		if err != nil {
+			return nil, fmt.Errorf("list bootstrap node group: %w", err)
+		}
+		if len(bootstrapGroup.Items) == 0 {
+			return nil, fmt.Errorf("no bootstrap node group found")
+		}
+		bootstrapNodeGroup := bootstrapGroup.Items[0]
+		joinServer = fmt.Sprintf(`%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, &bootstrapNodeGroup), meshv1.DefaultGRPCPort)
+		if bootstrapNodeGroup.Spec.Cluster.Service != nil {
+			externalURL, err := getLBExternalIP(ctx, r.Client, mesh, &bootstrapNodeGroup)
+			if err != nil {
+				return nil, fmt.Errorf("get load balancer external IP: %w", err)
+			}
+			joinServer = fmt.Sprintf(`%s:%d`, externalURL, bootstrapNodeGroup.Spec.Cluster.Service.GRPCPort)
 		}
 	}
 	conf, err := nodeconfig.New(nodeconfig.Options{
-		Mesh:               &mesh,
-		Group:              &group,
+		Mesh:               mesh,
+		Group:              group,
 		AdvertiseAddress:   advertiseAddress,
 		PrimaryEndpoint:    primaryEndpoint,
 		WireGuardEndpoints: wireguardEndpoints,
 		IsBootstrap:        isBootstrap,
 		BootstrapServers:   bootstrapServers,
+		JoinServer:         joinServer,
 		IsPersistent:       group.Spec.Cluster.PVCSpec != nil,
 		CertDir:            fmt.Sprintf(`%s/{{ env "POD_NAME" }}`, meshv1.DefaultTLSDirectory),
 	})
 	if err != nil {
-		log.Error(err, "unable to create node config")
-		return ctrl.Result{}, err
+		return nil, fmt.Errorf("build node config: %w", err)
 	}
-
-	// Create the node group config map and stateful set
-	toApply = append(toApply,
-		resources.NewNodeGroupConfigMap(&mesh, &group, conf),
-		resources.NewNodeGroupStatefulSet(&mesh, &group, conf.Checksum()))
-
-	// Apply any remaining resources
-	if err := resources.Apply(ctx, cli, toApply); err != nil {
-		log.Error(err, "unable to apply resources")
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return conf, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

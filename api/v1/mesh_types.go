@@ -73,6 +73,13 @@ func (c *Mesh) BootstrapGroup() *NodeGroup {
 	if c == nil {
 		return nil
 	}
+	labels := c.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	for k, v := range MeshBootstrapGroupSelector(c) {
+		labels[k] = v
+	}
 	bootstrapGroup := NodeGroup{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
@@ -81,7 +88,7 @@ func (c *Mesh) BootstrapGroup() *NodeGroup {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            "bootstrap",
 			Namespace:       c.GetNamespace(),
-			Labels:          c.GetLabels(),
+			Labels:          labels,
 			Annotations:     c.GetAnnotations(),
 			OwnerReferences: OwnerReferences(c),
 		},
