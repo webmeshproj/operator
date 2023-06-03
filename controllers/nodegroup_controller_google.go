@@ -65,14 +65,14 @@ func (r *NodeGroupReconciler) reconcileGoogleCloudNodeGroup(ctx context.Context,
 
 	spec := group.Spec.GoogleCloud
 
-	// Fetch the latest container optimized boot image
+	// Fetch the latest ubuntu boot image
 	bootImage, err := images.Get(ctx, &computepb.GetImageFamilyViewRequest{
-		Family:  "cos-stable",
-		Project: "cos-cloud",
+		Family:  "ubuntu-2204-lts",
+		Project: "ubuntu-os-cloud",
 		Zone:    spec.Zone,
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("get latest COS image: %w", err)
+		return ctrl.Result{}, fmt.Errorf("get latest ubuntu image: %w", err)
 	}
 
 	// Fetch the subnet

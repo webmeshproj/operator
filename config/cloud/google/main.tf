@@ -168,17 +168,12 @@ resource "google_container_node_pool" "this" {
     machine_type    = "e2-standard-2"
     disk_size_gb    = "60"
     disk_type       = "pd-standard"
-    image_type      = "COS_CONTAINERD"
+    image_type      = "UBUNTU_CONTAINERD"
     service_account = google_service_account.cluster_default.email
-
-    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
 
     workload_metadata_config {
       mode = "GKE_METADATA"
-    }
-
-    gvnic {
-      enabled = true
     }
   }
 

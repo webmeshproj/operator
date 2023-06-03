@@ -121,16 +121,6 @@ func MeshNodeClusterFQDN(mesh *Mesh, group *NodeGroup, index int) string {
 		MeshNodeGroupHeadlessServiceFQDN(mesh, group))
 }
 
-// MeshNodeGroupStatefulSetName returns the name of the StatefulSet for the given Mesh node group.
-func MeshNodeGroupStatefulSetName(mesh *Mesh, group *NodeGroup) string {
-	return fmt.Sprintf("%s-%s", mesh.GetName(), group.GetName())
-}
-
-// MeshNodeGroupConfigMapName returns the name of the ConfigMap for the given Mesh node group.
-func MeshNodeGroupConfigMapName(mesh *Mesh, group *NodeGroup) string {
-	return fmt.Sprintf("%s-%s", mesh.GetName(), group.GetName())
-}
-
 // MeshNodeGroupPodName returns the name of the Pod for the given Mesh node group.
 func MeshNodeGroupPodName(mesh *Mesh, group *NodeGroup, index int) string {
 	return fmt.Sprintf("%s-%s-%d", mesh.GetName(), group.GetName(), index)
@@ -180,20 +170,21 @@ func NodeGroupSelector(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := MeshSelector(mesh)
 	labels[NodeGroupNameLabel] = group.GetName()
 	labels[NodeGroupNamespaceLabel] = group.GetNamespace()
+	labels[NodeGroupComponentLabel] = "node"
 	return labels
 }
 
 // NodeGroupLBLabels returns the labels for the given Mesh node group's LB Service.
 func NodeGroupLBLabels(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := NodeGroupLabels(mesh, group)
-	labels[NodeGroupLBLabel] = "true"
+	labels[NodeGroupComponentLabel] = "lb"
 	return labels
 }
 
 // NodeGroupLBSelector returns the selector for the given Mesh node group's LB Service.
 func NodeGroupLBSelector(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := NodeGroupSelector(mesh, group)
-	labels[NodeGroupLBLabel] = "true"
+	labels[NodeGroupComponentLabel] = "lb"
 	return labels
 }
 

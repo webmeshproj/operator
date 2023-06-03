@@ -64,6 +64,18 @@ func getLBExternalIPs(ctx context.Context, cli client.Client, mesh *meshv1.Mesh,
 		// TODO: This is not correct, we need to get the external IP of the node
 		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
 	case corev1.ServiceTypeClusterIP:
+		if len(lbService.Spec.IPFamilies) > 0 {
+			// There may be a global IPv6 address under cluster IPs
+			for _, ip := range lbService.Spec.ClusterIPs {
+				addr, err := netip.ParseAddr(ip)
+				if err != nil {
+					return nil, fmt.Errorf("parse cluster IP: %w", err)
+				}
+				if !addr.IsPrivate() {
+					externalIPs = append(externalIPs, addr.String())
+				}
+			}
+		}
 		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
 	default:
 		return nil, fmt.Errorf("service has unknown type: %s", lbService.Spec.Type)

@@ -15,15 +15,14 @@ limitations under the License.
 */
 
 // Package cloudconfig contains Webmesh node cloud config rendering.
-// Returned cloud-configs are intended for use with container-optimized
-// OSes.
+// Returned cloud-configs are intended for use with ubuntu images.
 package cloudconfig
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"text/template"
 
 	"gopkg.in/yaml.v3"
@@ -41,7 +40,7 @@ type Config struct {
 
 // Checksum returns the checksum of the config.
 func (c *Config) Checksum() string {
-	return fmt.Sprintf("%x", crc32.ChecksumIEEE(c.rawJSON))
+	return fmt.Sprintf("%x", sha256.Sum256(c.rawJSON))
 }
 
 // Raw returns the raw config.
@@ -104,8 +103,24 @@ func New(opts Options) (*Config, error) {
 				Content:     string(opts.CA),
 			},
 		},
+		Packages: []string{
+			"apt-transport-https",
+			"ca-certificates",
+			"curl",
+			"gnupg",
+			"lsb-release",
+			"unattended-upgrades",
+			"wireguard-tools",
+		},
 		RunCmd: []string{
-			fmt.Sprintf("mkdir -p %s", opts.Config.Options.Store.DataDir),
+			"sysctl -w net.ipv4.conf.all.forwarding=1",
+			"sysctl -w net.ipv6.conf.all.forwarding=1",
+			"mkdir -p /etc/apt/keyrings",
+			"curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg",
+			`echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null`,
+			"apt-get update",
+			"apt-get install -y docker-ce docker-ce-cli containerd.io",
+			"mkdir -p /var/lib/webmesh/data",
 			"systemctl daemon-reload",
 			"systemctl enable docker",
 			"systemctl start docker",
@@ -177,7 +192,7 @@ ExecStart=/usr/bin/docker run --rm \
   -v /lib/modules:/lib/modules \
   -v /dev/net/tun:/dev/net/tun \
   -v /etc/webmesh:/etc/webmesh \
-  -v {{ .DataDir }}:{{ .DataDir }} \
+  -v /var/lib/webmesh/data:{{ .DataDir }} \
   {{ .Image }} --config /etc/webmesh/config.yaml
 ExecStop=/usr/bin/docker kill node
 Restart=always

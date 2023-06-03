@@ -1,0 +1,16 @@
+apiVersion: mesh.webmesh.io/v1
+kind: NodeGroup
+metadata:
+  name: gcloud-nodegroup
+spec:
+  replicas: 1
+  googleCloud:
+    projectID: webmeshproj
+    subnetwork: webmesh-external
+    zone: us-central1-a
+    machineType: e2-standard-2
+    tags: ["mesh-nodes"]
+  config:
+    logLevel: debug
+  mesh:
+    name: mesh-sample

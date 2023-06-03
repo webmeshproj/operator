@@ -17,19 +17,16 @@ limitations under the License.
 package resources
 
 import (
-	"fmt"
-	"hash/crc32"
-
-	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
+	"github.com/webmeshproj/operator/controllers/envoyconfig"
 	"github.com/webmeshproj/operator/controllers/nodeconfig"
 )
 
 // NewNodeGroupConfigMap returns a new ConfigMap for a NodeGroup.
-func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, conf *nodeconfig.Config) (cm *corev1.ConfigMap) {
+func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, conf *nodeconfig.Config, index int) (cm *corev1.ConfigMap) {
 	annotations := group.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
@@ -41,7 +38,7 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, conf *nod
 			Kind:       "ConfigMap",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            meshv1.MeshNodeGroupConfigMapName(mesh, group),
+			Name:            meshv1.MeshNodeGroupPodName(mesh, group, index),
 			Namespace:       group.GetNamespace(),
 			Labels:          meshv1.NodeGroupLabels(mesh, group),
 			Annotations:     annotations,
@@ -53,58 +50,19 @@ func NewNodeGroupConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup, conf *nod
 	}
 }
 
-func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (cm *corev1.ConfigMap, csum string, err error) {
-	cfg := map[string]map[string]any{
-		"tcp": make(map[string]any),
-		"udp": make(map[string]any),
-	}
-	cfg["tcp"]["routers"] = map[string]any{
-		"grpc": map[string]any{
-			"entryPoints": []string{"grpc"},
-			"rule":        "HostSNI(`*`)",
-			"service":     "grpc",
-			"tls":         map[string]any{"passthrough": true},
-		},
-	}
-	cfg["tcp"]["services"] = map[string]any{
-		"grpc": map[string]any{
-			"loadBalancer": map[string]any{
-				"servers": []map[string]any{
-					{"address": fmt.Sprintf(`%s:%d`,
-						meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultGRPCPort)},
-				},
-			},
-		},
-	}
-	udprouters := make(map[string]any)
-	udpservices := make(map[string]any)
-	for i := 0; i < int(*group.Spec.Replicas); i++ {
-		udprouters[fmt.Sprintf("wg%d", i)] = map[string]any{
-			"entryPoints": []string{fmt.Sprintf("wg%d", i)},
-			"service":     fmt.Sprintf("wg%d", i),
-		}
-		udpservices[fmt.Sprintf("wg%d", i)] = map[string]any{
-			"loadBalancer": map[string]any{
-				"servers": []map[string]any{
-					{"address": fmt.Sprintf(`%s:%d`,
-						meshv1.MeshNodeClusterFQDN(mesh, group, i), meshv1.DefaultWireGuardPort)},
-				},
-			},
-		}
-
-	}
-	cfg["udp"]["routers"] = udprouters
-	cfg["udp"]["services"] = udpservices
-	out, err := yaml.Marshal(cfg)
+func NewNodeGroupEnvoyConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (*corev1.ConfigMap, string, error) {
+	cfg, err := envoyconfig.New(envoyconfig.Options{
+		Mesh:  mesh,
+		Group: group,
+	})
 	if err != nil {
-		return nil, "", fmt.Errorf("marshal config: %w", err)
+		return nil, "", err
 	}
 	annotations := group.GetAnnotations()
 	if annotations == nil {
 		annotations = make(map[string]string)
 	}
-	csum = checksum(out)
-	annotations[meshv1.ConfigChecksumAnnotation] = csum
+	annotations[meshv1.ConfigChecksumAnnotation] = cfg.Checksum()
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: corev1.SchemeGroupVersion.String(),
@@ -118,11 +76,7 @@ func NewNodeGroupLBConfigMap(mesh *meshv1.Mesh, group *meshv1.NodeGroup) (cm *co
 			OwnerReferences: meshv1.OwnerReferences(group),
 		},
 		Data: map[string]string{
-			"config.yaml": string(out),
+			"envoy.yaml": string(cfg.Raw()),
 		},
-	}, csum, nil
-}
-
-func checksum(data []byte) string {
-	return fmt.Sprintf("%x", crc32.ChecksumIEEE(data))
+	}, cfg.Checksum(), nil
 }

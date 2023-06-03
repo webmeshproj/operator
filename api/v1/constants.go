@@ -19,8 +19,8 @@ package v1
 const (
 	// DefaultNodeImage is the default image to use for nodes.
 	DefaultNodeImage = "ghcr.io/webmeshproj/node:latest"
-	// DefaultNodeLBImage is the default image to use for node load balancers.
-	DefaultNodeLBImage = "traefik:v3.0"
+	// DefaultNodeEnvoyImage is the default image to use for node envoys.
+	DefaultNodeEnvoyImage = "envoyproxy/envoy:distroless-v1.26.1"
 	// DefaultRaftPort is the default port to use for Raft.
 	DefaultRaftPort = 9443
 	// DefaultGRPCPort is the default port to use for gRPC.
@@ -43,10 +43,12 @@ const (
 	NodeGroupNameLabel = "webmesh.io/nodegroup-name"
 	// NodeGroupNamespaceLabel is the label to use for the NodeGroup namespace.
 	NodeGroupNamespaceLabel = "webmesh.io/nodegroup-namespace"
-	// NodeGroupLBLabel is the label to use for the NodeGroup load balancer.
-	NodeGroupLBLabel = "webmesh.io/nodegroup-lb"
+	// NodeGroupComponentLabel is the label to use for specifying the component of a NodeGroup.
+	NodeGroupComponentLabel = "webmesh.io/nodegroup-component"
 	// ConfigChecksumAnnotation is the annotation to use for configmap checksums.
 	ConfigChecksumAnnotation = "webmesh.io/config-checksum"
+	// SpecChecksumAnnotation is the annotation to use for spec checksums.
+	SpecChecksumAnnotation = "webmesh.io/spec-checksum"
 	// BootstrapNodeGroupAnnotation is the annotation to use for bootstrap node groups.
 	// This should only be set by the controller for bootstrap node groups. It is also
 	// used as a label selector for bootstrap node groups.

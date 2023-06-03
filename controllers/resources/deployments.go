@@ -23,7 +23,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -56,33 +55,15 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:            "lb",
-							Image:           meshv1.DefaultNodeLBImage,
+							Name:            "envoy",
+							Image:           meshv1.DefaultNodeEnvoyImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							Args: func() []string {
-								args := []string{
-									"--ping",
-									"--ping.entrypoint=traefik",
-									"--log",
-									"--log.level=INFO",
-									"--providers.file.directory=/etc/traefik",
-									"--entrypoints.traefik.address=:9000/tcp",
-									"--entrypoints.grpc.address=:8443/tcp",
-								}
-								for i := 0; i < int(*group.Spec.Replicas); i++ {
-									args = append(args,
-										fmt.Sprintf("--entrypoints.wg%d.address=:%d/udp",
-											i, group.Spec.Cluster.Service.WireGuardPort+int32(i)))
-									args = append(args,
-										fmt.Sprintf("--entrypoints.wg%d.udp.timeout=1m", i))
-								}
-								return args
-							}(),
+							Args:            []string{"-c", "/etc/envoy/envoy.yaml"},
 							Ports: func() []corev1.ContainerPort {
 								ports := []corev1.ContainerPort{
 									{
-										Name:          "traefik",
-										ContainerPort: 9000,
+										Name:          "admin",
+										ContainerPort: 9901,
 										Protocol:      corev1.ProtocolTCP,
 									},
 									{
@@ -94,8 +75,8 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 								for i := 0; i < int(*group.Spec.Replicas); i++ {
 									ports = append(ports,
 										corev1.ContainerPort{
-											Name:          fmt.Sprintf("wg%d", i),
-											ContainerPort: group.Spec.Cluster.Service.WireGuardPort + int32(i),
+											Name:          fmt.Sprintf("wireguard-%d", i),
+											ContainerPort: meshv1.DefaultWireGuardPort + int32(i),
 											Protocol:      corev1.ProtocolUDP,
 										})
 								}
@@ -104,33 +85,7 @@ func NewNodeGroupLBDeployment(mesh *meshv1.Mesh, group *meshv1.NodeGroup, config
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "config",
-									MountPath: "/etc/traefik",
-								},
-							},
-							LivenessProbe: &corev1.Probe{
-								InitialDelaySeconds: 5,
-								TimeoutSeconds:      5,
-								PeriodSeconds:       10,
-								SuccessThreshold:    1,
-								FailureThreshold:    3,
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/ping",
-										Port: intstr.FromString("traefik"),
-									},
-								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								InitialDelaySeconds: 5,
-								TimeoutSeconds:      5,
-								PeriodSeconds:       10,
-								SuccessThreshold:    1,
-								FailureThreshold:    3,
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/ping",
-										Port: intstr.FromString("traefik"),
-									},
+									MountPath: "/etc/envoy",
 								},
 							},
 							Resources: corev1.ResourceRequirements{

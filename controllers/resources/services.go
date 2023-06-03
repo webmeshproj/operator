@@ -45,26 +45,31 @@ func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *co
 			Type:           corev1.ServiceTypeClusterIP,
 			IPFamilyPolicy: &policy,
 			Selector:       meshv1.NodeGroupSelector(mesh, group),
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "grpc",
-					Port:       meshv1.DefaultGRPCPort,
-					TargetPort: intstr.FromString("grpc"),
-					Protocol:   corev1.ProtocolTCP,
-				},
-				{
-					Name:       "raft",
-					Port:       meshv1.DefaultRaftPort,
-					TargetPort: intstr.FromString("raft"),
-					Protocol:   corev1.ProtocolTCP,
-				},
-				{
-					Name:       "wireguard",
-					Port:       meshv1.DefaultWireGuardPort,
-					TargetPort: intstr.FromString("wireguard"),
-					Protocol:   corev1.ProtocolUDP,
-				},
-			},
+			Ports: func() []corev1.ServicePort {
+				ports := []corev1.ServicePort{
+					{
+						Name:       "grpc",
+						Port:       meshv1.DefaultGRPCPort,
+						TargetPort: intstr.FromString("grpc"),
+						Protocol:   corev1.ProtocolTCP,
+					},
+					{
+						Name:       "raft",
+						Port:       meshv1.DefaultRaftPort,
+						TargetPort: intstr.FromString("raft"),
+						Protocol:   corev1.ProtocolTCP,
+					},
+				}
+				for i := 0; i < int(*group.Spec.Replicas); i++ {
+					ports = append(ports, corev1.ServicePort{
+						Name:       fmt.Sprintf("wireguard-%d", i),
+						Port:       meshv1.DefaultWireGuardPort + int32(i),
+						TargetPort: intstr.FromInt(meshv1.DefaultWireGuardPort + i),
+						Protocol:   corev1.ProtocolUDP,
+					})
+				}
+				return ports
+			}(),
 		},
 	}
 }
@@ -102,7 +107,7 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.S
 					ports = append(ports, corev1.ServicePort{
 						Name:       fmt.Sprintf("wireguard-%d", i),
 						Port:       spec.WireGuardPort + int32(i),
-						TargetPort: intstr.FromInt(int(spec.WireGuardPort) + i),
+						TargetPort: intstr.FromString(fmt.Sprintf("wireguard-%d", i)),
 						Protocol:   corev1.ProtocolUDP,
 					})
 				}

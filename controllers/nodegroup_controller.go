@@ -41,7 +41,7 @@ type NodeGroupReconciler struct {
 
 const foregroundDeletion = "nodegroups.mesh.webmesh.io"
 
-//+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps;pods,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups,verbs=get;list;watch;create;update;patch;delete
@@ -140,6 +140,7 @@ func (r *NodeGroupReconciler) reconcileDelete(ctx context.Context, group *meshv1
 func (r *NodeGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&meshv1.NodeGroup{}).
+		Owns(&corev1.Pod{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).

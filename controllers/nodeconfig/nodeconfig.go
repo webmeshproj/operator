@@ -18,11 +18,12 @@ limitations under the License.
 package nodeconfig
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"hash/crc32"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/webmeshproj/node/pkg/global"
 	"github.com/webmeshproj/node/pkg/nodecmd"
@@ -43,6 +44,8 @@ type Options struct {
 	PrimaryEndpoint string
 	// WireGuardEndpoints are the WireGuard endpoints.
 	WireGuardEndpoints []string
+	// WireGuardListenPort is the WireGuard listen port.
+	WireGuardListenPort int
 	// IsBootstrap is true if this is the bootstrap node group.
 	IsBootstrap bool
 	// BootstrapServers are the bootstrap servers.
@@ -57,6 +60,8 @@ type Options struct {
 	DetectEndpoints bool
 	// AllowRemoteDetection is true if remote detection is allowed.
 	AllowRemoteDetection bool
+	// PersistentKeepalive is the persistent keepalive.
+	PersistentKeepalive time.Duration
 }
 
 // Config represents a rendered node group config.
@@ -68,7 +73,7 @@ type Config struct {
 
 // Checksum returns the checksum of the config.
 func (c *Config) Checksum() string {
-	return fmt.Sprintf("%x", crc32.ChecksumIEEE(c.rawjson))
+	return fmt.Sprintf("%x", sha256.Sum256(c.rawjson))
 }
 
 // Raw returns the raw config.
@@ -106,6 +111,7 @@ func New(opts Options) (*Config, error) {
 		NoIPv6:               groupcfg.NoIPv6,
 		DetectEndpoints:      opts.DetectEndpoints,
 		AllowRemoteDetection: opts.AllowRemoteDetection,
+		DetectIPv6:           opts.DetectEndpoints, // TODO: Make this a separate option
 	}
 
 	// Endpoint and zone awareness options
@@ -113,7 +119,15 @@ func New(opts Options) (*Config, error) {
 	nodeopts.Store.NodeEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
 		wgEndpoints := sort.StringSlice(opts.WireGuardEndpoints)
+		// Sort the WireGuard endpoints to ensure a consistent order
+		sort.Sort(wgEndpoints)
 		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(wgEndpoints, ",")
+	}
+
+	// WireGuard options
+	nodeopts.Wireguard.PersistentKeepAlive = opts.PersistentKeepalive
+	if opts.WireGuardListenPort > 0 {
+		nodeopts.Wireguard.ListenPort = opts.WireGuardListenPort
 	}
 
 	// Bootstrap options
@@ -124,12 +138,12 @@ func New(opts Options) (*Config, error) {
 		nodeopts.Services.EnableLeaderProxy = true
 		nodeopts.Store.AdvertiseAddress = opts.AdvertiseAddress
 		if len(opts.BootstrapServers) > 0 {
-			var bootstrapServers []string
+			var bootstrapServers sort.StringSlice
 			for name, addr := range opts.BootstrapServers {
 				bootstrapServers = append(bootstrapServers, fmt.Sprintf("%s=%s", name, addr))
 			}
 			// Sort the bootstrap servers to ensure a consistent order
-			bootstrapServers = sort.StringSlice(bootstrapServers)
+			sort.Sort(bootstrapServers)
 			nodeopts.Store.Options.BootstrapServers = strings.Join(bootstrapServers, ",")
 		}
 	} else {
@@ -137,6 +151,7 @@ func New(opts Options) (*Config, error) {
 			return nil, fmt.Errorf("join server is required for non bootstrap node groups")
 		}
 		nodeopts.Store.Join = opts.JoinServer
+		nodeopts.Store.LeaveOnShutdown = true // TODO: Make this a separate option
 	}
 
 	// Storage options
