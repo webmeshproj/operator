@@ -18,6 +18,7 @@ limitations under the License.
 package nodeconfig
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -184,7 +185,10 @@ func New(opts Options) (*Config, error) {
 	}
 
 	// Build the config
-	out, err := yaml.Marshal(nodeopts)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	err := enc.Encode(nodeopts)
 	if err != nil {
 		return nil, fmt.Errorf("marshal config: %w", err)
 	}
@@ -195,6 +199,6 @@ func New(opts Options) (*Config, error) {
 	return &Config{
 		Options: nodeopts,
 		rawjson: j,
-		raw:     out,
+		raw:     buf.Bytes(),
 	}, nil
 }

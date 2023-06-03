@@ -127,7 +127,10 @@ func New(opts Options) (*Config, error) {
 			"systemctl start node",
 		},
 	}
-	data, err := yaml.Marshal(out)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	err := enc.Encode(out)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +139,7 @@ func New(opts Options) (*Config, error) {
 		return nil, err
 	}
 	return &Config{
-		raw:     append([]byte("#cloud-config\n\n"), data...),
+		raw:     append([]byte("#cloud-config\n\n"), buf.Bytes()...),
 		rawJSON: js,
 	}, nil
 }

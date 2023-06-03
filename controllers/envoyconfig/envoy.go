@@ -18,6 +18,7 @@ limitations under the License.
 package envoyconfig
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -58,9 +59,10 @@ func New(opts Options) (*Config, error) {
 		Admin: envoyAdmin{
 			Address: envoyAddress{
 				SocketAddress: envoySocketAddress{
-					Protocol:  "TCP",
-					Address:   "0.0.0.0",
-					PortValue: 9901,
+					Protocol:   "TCP",
+					Address:    "::",
+					PortValue:  9901,
+					IPv4Compat: true,
 				},
 			},
 		},
@@ -71,9 +73,10 @@ func New(opts Options) (*Config, error) {
 		Name: "grpc",
 		Address: envoyAddress{
 			SocketAddress: envoySocketAddress{
-				Protocol:  "TCP",
-				Address:   "::",
-				PortValue: meshv1.DefaultGRPCPort,
+				Protocol:   "TCP",
+				Address:    "::",
+				PortValue:  meshv1.DefaultGRPCPort,
+				IPv4Compat: true,
 			},
 		},
 		FilterChains: []envoyFilterChain{
@@ -128,9 +131,10 @@ func New(opts Options) (*Config, error) {
 			Name: name,
 			Address: envoyAddress{
 				SocketAddress: envoySocketAddress{
-					Protocol:  "UDP",
-					Address:   "::",
-					PortValue: port,
+					Protocol:   "UDP",
+					Address:    "::",
+					PortValue:  port,
+					IPv4Compat: true,
 				},
 			},
 			UDPListenerConfig: envoyUDPListenerConfig{
@@ -192,7 +196,11 @@ func New(opts Options) (*Config, error) {
 	}
 	conf.StaticResources.Listeners = listeners
 	conf.StaticResources.Clusters = clusters
-	raw, err := yaml.Marshal(conf)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	err := enc.Encode(&conf)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +209,7 @@ func New(opts Options) (*Config, error) {
 		return nil, err
 	}
 	return &Config{
-		raw:     raw,
+		raw:     buf.Bytes(),
 		rawjson: rawjson,
 	}, nil
 }
@@ -279,7 +287,8 @@ type envoyAddress struct {
 }
 
 type envoySocketAddress struct {
-	Protocol  string `yaml:"protocol"`
-	Address   string `yaml:"address"`
-	PortValue int    `yaml:"port_value"`
+	Protocol   string `yaml:"protocol"`
+	Address    string `yaml:"address"`
+	PortValue  int    `yaml:"port_value"`
+	IPv4Compat bool   `yaml:"ipv4_compat,omitempty"`
 }

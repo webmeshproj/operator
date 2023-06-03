@@ -17,6 +17,7 @@ limitations under the License.
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -162,7 +163,11 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 		},
 	}
 	adminConfig.CurrentContext = mesh.GetName()
-	data, err := yaml.Marshal(adminConfig)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	err = enc.Encode(adminConfig)
 	if err != nil {
 		log.Error(err, "unable to marshal admin config")
 		return ctrl.Result{}, err
@@ -182,7 +187,7 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 			OwnerReferences: meshv1.OwnerReferences(mesh),
 		},
 		Data: map[string][]byte{
-			"config.yaml": data,
+			"config.yaml": buf.Bytes(),
 		},
 	}
 	if err := resources.Apply(ctx, r.Client, []client.Object{&adminConfigSecret}); err != nil {
