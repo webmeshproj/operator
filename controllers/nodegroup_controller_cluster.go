@@ -73,20 +73,17 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 	// Create the service if we are exposing the node group
 	var externalURLs []string
 	if group.Spec.Cluster.Service != nil {
-		envoyConfig, csum, err := resources.NewNodeGroupEnvoyConfigMap(mesh, group)
+		lbConfig, csum, err := resources.NewNodeGroupLBConfigMap(mesh, group)
 		if err != nil {
-			log.Error(err, "unable to create envoy config map")
 			return ctrl.Result{}, err
 		}
-		toApply = append(toApply, envoyConfig,
-			resources.NewNodeGroupLBDeployment(mesh, group, csum),
-			resources.NewNodeGroupLBService(mesh, group))
+		lbDeploy := resources.NewNodeGroupLBDeployment(mesh, group, csum)
+		toApply = append(toApply, lbConfig, lbDeploy, resources.NewNodeGroupLBService(mesh, group))
 		if group.Spec.Cluster.Service.ExternalURL != "" {
 			externalURLs = []string{group.Spec.Cluster.Service.ExternalURL}
-		}
-		if len(externalURLs) == 0 && group.Spec.Cluster.Service.Type != corev1.ServiceTypeClusterIP {
+		} else {
 			// We need to pre-create the service so we can use it as the external URL
-			err = resources.Apply(ctx, cli, toApply)
+			err := resources.Apply(ctx, cli, toApply)
 			if err != nil {
 				log.Error(err, "unable to apply resources")
 				return ctrl.Result{}, err
@@ -127,6 +124,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 	}
 
 	// Handle pods individually
+	// var needsRequeue bool
 	for i := 0; i < int(*group.Spec.Replicas); i++ {
 		pod, err := resources.NewNodeGroupPod(mesh, group, confs[i].Checksum(), i)
 		if err != nil {
@@ -149,11 +147,13 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 				log.Error(err, "unable to apply pod")
 				return ctrl.Result{}, err
 			}
+			// needsRequeue = true
 		} else {
 			// Check if the spec has changed
 			existingConfSum, confSumOk := existing.Annotations[meshv1.ConfigChecksumAnnotation]
 			existingSpecSum, specSumOk := existing.Annotations[meshv1.SpecChecksumAnnotation]
 			if !confSumOk || !specSumOk || existingConfSum != confs[i].Checksum() || existingSpecSum != pod.Annotations[meshv1.SpecChecksumAnnotation] {
+				// TODO: Depending on the role of the group - this may need to be done gracefully
 				// Delete the pod
 				err := cli.Delete(ctx, &existing)
 				if err != nil {
@@ -166,9 +166,29 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 					log.Error(err, "unable to apply pod")
 					return ctrl.Result{}, err
 				}
+				// needsRequeue = true
 			}
+			// // Create endpoint slices for the pod
+			// endpoints, err := resources.NewNodeGroupPodEndpointSlices(mesh, group, &existing, i)
+			// if err != nil {
+			// 	return ctrl.Result{}, err
+			// }
+			// eps := make([]client.Object, len(endpoints))
+			// for i, ep := range endpoints {
+			// 	eps[i] = ep
+			// }
+			// err = resources.Apply(ctx, cli, eps)
+			// if err != nil {
+			// 	log.Error(err, "unable to apply endpoint slices")
+			// 	return ctrl.Result{}, err
+			// }
 		}
 	}
+
+	// if needsRequeue {
+	// 	return ctrl.Result{Requeue: true, RequeueAfter: time.Second}, nil
+	// }
+
 	return ctrl.Result{}, nil
 }
 

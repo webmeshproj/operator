@@ -46,37 +46,39 @@ func getLBExternalIPs(ctx context.Context, cli client.Client, mesh *meshv1.Mesh,
 			return nil, ErrLBNotReady
 		}
 		for _, ingress := range lbService.Status.LoadBalancer.Ingress {
+			if ingress.IP == "" {
+				return nil, ErrLBNotReady
+			}
 			externalIPs = append(externalIPs, ingress.IP)
 		}
-		if len(lbService.Spec.IPFamilies) > 0 {
-			// There may be a global IPv6 address under cluster IPs
-			for _, ip := range lbService.Spec.ClusterIPs {
-				addr, err := netip.ParseAddr(ip)
-				if err != nil {
-					return nil, fmt.Errorf("parse cluster IP: %w", err)
-				}
-				if !addr.IsPrivate() {
-					externalIPs = append(externalIPs, addr.String())
-				}
+		for _, ip := range lbService.Spec.ClusterIPs {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil {
+				return nil, fmt.Errorf("parse cluster IP: %w", err)
+			}
+			if !addr.IsPrivate() {
+				externalIPs = append(externalIPs, addr.String())
 			}
 		}
 	case corev1.ServiceTypeNodePort:
-		// TODO: This is not correct, we need to get the external IP of the node
-		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
+		return nil, fmt.Errorf("node port not supported")
 	case corev1.ServiceTypeClusterIP:
-		if len(lbService.Spec.IPFamilies) > 0 {
-			// There may be a global IPv6 address under cluster IPs
-			for _, ip := range lbService.Spec.ClusterIPs {
-				addr, err := netip.ParseAddr(ip)
-				if err != nil {
-					return nil, fmt.Errorf("parse cluster IP: %w", err)
-				}
-				if !addr.IsPrivate() {
-					externalIPs = append(externalIPs, addr.String())
-				}
+		for _, ip := range lbService.Spec.ClusterIPs {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil {
+				return nil, fmt.Errorf("parse cluster IP: %w", err)
+			}
+			if !addr.IsPrivate() {
+				externalIPs = append(externalIPs, addr.String())
 			}
 		}
-		externalIPs = append(externalIPs, lbService.Spec.ClusterIP)
+		clusterIP, err := netip.ParseAddr(lbService.Spec.ClusterIP)
+		if err != nil {
+			return nil, fmt.Errorf("parse cluster IP: %w", err)
+		}
+		if !clusterIP.IsPrivate() {
+			externalIPs = append(externalIPs, clusterIP.String())
+		}
 	default:
 		return nil, fmt.Errorf("service has unknown type: %s", lbService.Spec.Type)
 	}

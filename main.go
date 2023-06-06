@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+
 	//+kubebuilder:scaffold:imports
 
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
@@ -59,7 +60,7 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 0,
+	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", 3,
 		"Max number of concurrent reconciles")
 	opts := zap.Options{
 		Development: true,

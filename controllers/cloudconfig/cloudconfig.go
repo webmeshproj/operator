@@ -67,12 +67,6 @@ func New(opts Options) (*Config, error) {
 	out := cloudConfig{
 		WriteFiles: []writeFile{
 			{
-				Path:        "/etc/systemd/system/config-firewall.service",
-				Permissions: "0644",
-				Owner:       "root",
-				Content:     configFirewallUnit,
-			},
-			{
 				Path:        "/etc/systemd/system/node.service",
 				Permissions: "0644",
 				Owner:       "root",
@@ -111,6 +105,7 @@ func New(opts Options) (*Config, error) {
 			"lsb-release",
 			"unattended-upgrades",
 			"wireguard-tools",
+			"net-tools",
 		},
 		RunCmd: []string{
 			"sysctl -w net.ipv4.conf.all.forwarding=1",
@@ -169,21 +164,13 @@ func nodeContainerUnit(opts *Options) string {
 	return buf.String()
 }
 
-var configFirewallUnit = `[Unit]
-Description=Configures the host firewall
-
-[Service]
-Type=oneshot
-RemainAfterExit=true
-ExecStart=/sbin/iptables -A INPUT -j ACCEPT
-`
-
 var nodeContainerUnitTemplate = template.Must(template.New("nodecontainer").Parse(`[Unit]
 Description=node
-After=docker.service config-firewall.service
-Wants=docker.service config-firewall.service
+After=docker.service
+Wants=docker.service
 
 [Service]
+ExecStartPre=-/usr/sbin/nft flush ruleset
 ExecStart=/usr/bin/docker run --rm \
   --pull always \
   --name node \

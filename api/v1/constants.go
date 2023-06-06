@@ -19,8 +19,12 @@ package v1
 const (
 	// DefaultNodeImage is the default image to use for nodes.
 	DefaultNodeImage = "ghcr.io/webmeshproj/node:latest"
+	// DefaultNodeProxyImage is the default image to use for node proxies.
+	DefaultNodeProxyImage = "ghcr.io/webmeshproj/node-proxy:latest"
 	// DefaultNodeEnvoyImage is the default image to use for node envoys.
 	DefaultNodeEnvoyImage = "envoyproxy/envoy:distroless-v1.26.1"
+	// DefaultNodeTraefikImage is the default image to use for node traefiks.
+	DefaultNodeTraefikImage = "traefik:v3.0"
 	// DefaultRaftPort is the default port to use for Raft.
 	DefaultRaftPort = 9443
 	// DefaultGRPCPort is the default port to use for gRPC.

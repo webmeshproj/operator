@@ -25,6 +25,10 @@ type NodeGroupConfig struct {
 	// +optional
 	LogLevel string `json:"logLevel,omitempty"`
 
+	// Voter is true if the nodes in this group should be voters.
+	// +optional
+	Voter bool `json:"voter,omitempty"`
+
 	// NoIPv6 is true if IPv6 should not be used for the node group.
 	// +optional
 	NoIPv6 bool `json:"noIPv6,omitempty"`

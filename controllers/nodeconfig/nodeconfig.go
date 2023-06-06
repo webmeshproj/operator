@@ -127,6 +127,7 @@ func New(opts Options) (*Config, error) {
 
 	// WireGuard options
 	nodeopts.Wireguard.PersistentKeepAlive = opts.PersistentKeepalive
+	nodeopts.Wireguard.ForceName = true
 	if opts.WireGuardListenPort > 0 {
 		nodeopts.Wireguard.ListenPort = opts.WireGuardListenPort
 	}
@@ -134,7 +135,8 @@ func New(opts Options) (*Config, error) {
 	// Bootstrap options
 	if opts.IsBootstrap {
 		nodeopts.Store.Bootstrap = true
-		nodeopts.Store.BootstrapWithRaftACLs = true
+		// TODO: Create ACLs automatically for new nodes
+		// nodeopts.Store.BootstrapWithRaftACLs = true
 		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
 		nodeopts.Services.EnableLeaderProxy = true
 		nodeopts.Store.AdvertiseAddress = opts.AdvertiseAddress
@@ -152,6 +154,7 @@ func New(opts Options) (*Config, error) {
 			return nil, fmt.Errorf("join server is required for non bootstrap node groups")
 		}
 		nodeopts.Store.Join = opts.JoinServer
+		nodeopts.Store.JoinAsVoter = groupcfg.Voter
 		nodeopts.Store.LeaveOnShutdown = true // TODO: Make this a separate option
 	}
 

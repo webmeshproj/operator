@@ -3,7 +3,7 @@ kind: Mesh
 metadata:
   name: mesh-sample
 spec:
-  # ipv4: 10.200.0.0/16
+  ipv4: 10.150.0.0/16
   issuer:
     create: true
   bootstrap:

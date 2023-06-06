@@ -6108,6 +6108,10 @@ spec:
                                 type: array
                             type: object
                         type: object
+                      voter:
+                        description: Voter is true if the nodes in this group should
+                          be voters.
+                        type: boolean
                     type: object
                   configGroup:
                     description: ConfigGroup is the name of the configuration group
@@ -6289,6 +6293,10 @@ spec:
                               type: array
                           type: object
                       type: object
+                    voter:
+                      description: Voter is true if the nodes in this group should
+                        be voters.
+                      type: boolean
                   type: object
                 description: ConfigGroups is a map of configurations for groups of
                   nodes. These can be referenced by name in NodeGroupSpecs.

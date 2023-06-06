@@ -23,6 +23,7 @@ import (
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +43,8 @@ type NodeGroupReconciler struct {
 const foregroundDeletion = "nodegroups.mesh.webmesh.io"
 
 //+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps;pods,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups/status,verbs=get;update;patch
@@ -144,8 +146,8 @@ func (r *NodeGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&appsv1.StatefulSet{}).
 		Owns(&appsv1.Deployment{}).
+		Owns(&discoveryv1.EndpointSlice{}).
 		Owns(&certv1.Certificate{}).
 		Complete(r)
 }

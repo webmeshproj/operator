@@ -91,7 +91,7 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	if bootstrap.Spec.Cluster != nil {
-		if bootstrap.Spec.Cluster.Service == nil || bootstrap.Spec.Cluster.Service.Type == corev1.ServiceTypeClusterIP {
+		if bootstrap.Spec.Cluster.Service == nil {
 			// We are done here, we can't generate an admin config
 			// without an exposed service
 			return ctrl.Result{}, nil
@@ -109,10 +109,11 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 	// Get the LB service
 	externalIPs, err := getLBExternalIPs(ctx, r.Client, mesh, mesh.BootstrapGroup())
 	if err != nil {
-		log.Error(err, "unable to get LB external IP")
 		if errors.Is(err, ErrLBNotReady) {
+			log.Info("LB not ready, requeueing")
 			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
 		}
+		log.Error(err, "unable to get LB external IP")
 		return ctrl.Result{}, err
 	}
 	// Get the admin certificate

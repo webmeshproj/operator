@@ -37,7 +37,6 @@ rules:
   - apps
   resources:
   - deployments
-  - statefulsets
   verbs:
   - create
   - delete
@@ -64,6 +63,18 @@ rules:
   - certificates
   - clusterissuers
   - issuers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - discovery.k8s.io
+  resources:
+  - endpointslices
   verbs:
   - create
   - delete

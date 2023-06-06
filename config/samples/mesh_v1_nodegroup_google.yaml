@@ -3,7 +3,6 @@ kind: NodeGroup
 metadata:
   name: gcloud-nodegroup
 spec:
-  replicas: 1
   googleCloud:
     projectID: webmeshproj
     subnetwork: webmesh-external

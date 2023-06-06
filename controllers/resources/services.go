@@ -76,7 +76,7 @@ func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *co
 
 // NewNodeGroupLBService returns a new service for exposing a NodeGroup.
 func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.Service {
-	policy := corev1.IPFamilyPolicyPreferDualStack
+	ipPolicy := corev1.IPFamilyPolicyPreferDualStack
 	spec := group.Spec.Cluster.Service
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -92,7 +92,7 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.S
 		},
 		Spec: corev1.ServiceSpec{
 			Type:           spec.Type,
-			IPFamilyPolicy: &policy,
+			IPFamilyPolicy: &ipPolicy,
 			Selector:       meshv1.NodeGroupLBSelector(mesh, group),
 			Ports: func() []corev1.ServicePort {
 				ports := []corev1.ServicePort{
