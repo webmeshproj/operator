@@ -88,8 +88,8 @@ func getLBExternalIPs(ctx context.Context, cli client.Client, mesh *meshv1.Mesh,
 	return externalIPs, nil
 }
 
-func getJoinServer(ctx context.Context, cli client.Client, mesh *meshv1.Mesh) (string, error) {
-	// TODO: Technically this can be any node group
+func getJoinServer(ctx context.Context, cli client.Client, mesh *meshv1.Mesh, thisGroup *meshv1.NodeGroup) (string, error) {
+	// TODO: We should technically list all node groups
 	var bootstrapGroup meshv1.NodeGroupList
 	err := cli.List(ctx, &bootstrapGroup,
 		client.InNamespace(mesh.GetNamespace()),
@@ -100,14 +100,30 @@ func getJoinServer(ctx context.Context, cli client.Client, mesh *meshv1.Mesh) (s
 	if len(bootstrapGroup.Items) == 0 {
 		return "", fmt.Errorf("no bootstrap node group found")
 	}
-	bootstrapNodeGroup := bootstrapGroup.Items[0]
-	joinServer := fmt.Sprintf(`%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, &bootstrapNodeGroup), meshv1.DefaultGRPCPort)
-	if bootstrapNodeGroup.Spec.Cluster.Service != nil {
-		externalURLs, err := getLBExternalIPs(ctx, cli, mesh, &bootstrapNodeGroup)
-		if err != nil {
-			return "", fmt.Errorf("get load balancer external IP: %w", err)
+	for _, group := range bootstrapGroup.Items {
+		if group.Name == thisGroup.Name {
+			continue
 		}
-		joinServer = fmt.Sprintf(`%s:%d`, externalURLs[0], bootstrapNodeGroup.Spec.Cluster.Service.GRPCPort)
+		if group.Spec.Cluster.Service != nil {
+			externalURLs, err := getLBExternalIPs(ctx, cli, mesh, &group)
+			if err != nil {
+				return "", fmt.Errorf("get load balancer external IP: %w", err)
+			}
+			return fmt.Sprintf(`%s:%d`, externalURLs[0], group.Spec.Cluster.Service.GRPCPort), nil
+		}
+	}
+	// Fall back to headless service only if this is one of the bootstrap groups
+	var joinServer string
+	if labels := thisGroup.GetLabels(); labels != nil && labels[meshv1.BootstrapNodeGroupLabel] == "true" {
+		for _, group := range bootstrapGroup.Items {
+			if group.Name == thisGroup.Name {
+				continue
+			}
+			joinServer = fmt.Sprintf(`%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, &group), meshv1.DefaultGRPCPort)
+		}
+	}
+	if joinServer == "" {
+		return "", fmt.Errorf("no join server found")
 	}
 	return joinServer, nil
 }

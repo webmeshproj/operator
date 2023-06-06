@@ -17,6 +17,8 @@ limitations under the License.
 package v1
 
 import (
+	"fmt"
+
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,8 +38,10 @@ type MeshSpec struct {
 	ConfigGroups map[string]NodeGroupConfig `json:"configGroups,omitempty"`
 
 	// Bootstrap is the configuration for the bootstrap node group.
-	// A headless service is created for this group in addition to
-	// any service defined in the NodeGroupServiceConfig.
+	// A headless service is created for this group that is only accessible
+	// within the cluster. If an exposed service is configured, an additional
+	// load balancer node group will be created as an initial entrypoint to
+	// the mesh.
 	// +optional
 	Bootstrap NodeGroupSpec `json:"bootstrap,omitempty"`
 
@@ -69,7 +73,7 @@ type IssuerConfig struct {
 }
 
 // BootstrapGroup returns a NodeGroup for the bootstrap group.
-func (c *Mesh) BootstrapGroup() *NodeGroup {
+func (c *Mesh) BootstrapGroups() []*NodeGroup {
 	if c == nil {
 		return nil
 	}
@@ -80,28 +84,56 @@ func (c *Mesh) BootstrapGroup() *NodeGroup {
 	for k, v := range MeshBootstrapGroupSelector(c) {
 		labels[k] = v
 	}
+	annotations := c.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[BootstrapNodeGroupAnnotation] = "true"
 	bootstrapGroup := NodeGroup{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "NodeGroup",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            "bootstrap",
+			Name:            fmt.Sprintf("%s-bootstrap", c.GetName()),
 			Namespace:       c.GetNamespace(),
 			Labels:          labels,
-			Annotations:     c.GetAnnotations(),
+			Annotations:     annotations,
 			OwnerReferences: OwnerReferences(c),
 		},
-		Spec: c.Spec.Bootstrap,
+		Spec: *c.Spec.Bootstrap.DeepCopy(),
 	}
-	bootstrapGroup.Annotations[BootstrapNodeGroupAnnotation] = "true"
+	if bootstrapGroup.Spec.Cluster.Service != nil {
+		// Force this to be nil, we expose via a separate node group.
+		bootstrapGroup.Spec.Cluster.Service = nil
+	}
 	bootstrapGroup.Spec.Mesh = corev1.ObjectReference{
 		APIVersion: c.APIVersion,
 		Kind:       c.Kind,
 		Name:       c.GetName(),
 		Namespace:  c.GetNamespace(),
 	}
-	return &bootstrapGroup
+	groups := []*NodeGroup{&bootstrapGroup}
+	// Create an LB group if we are exposing the bootstrap group.
+	if c.Spec.Bootstrap.Cluster.Service != nil {
+		lbGroup := bootstrapGroup.DeepCopy()
+		lbGroup.SetName(fmt.Sprintf("%s-bootstrap-lb", c.GetName()))
+		// This is not a bootstrap group, it joins the initial group
+		delete(lbGroup.Annotations, BootstrapNodeGroupAnnotation)
+		lbGroup.Spec.Replicas = nil
+		if lbGroup.Spec.Config == nil {
+			lbGroup.Spec.Config = &NodeGroupConfig{}
+		}
+		lbGroup.Spec.Config.Voter = true
+		if lbGroup.Spec.Config.Services == nil {
+			lbGroup.Spec.Config.Services = &NodeServicesConfig{}
+		}
+		lbGroup.Spec.Config.Services.EnableLeaderProxy = true
+		lbGroup.Spec.Config.Services.EnableMeshAPI = true
+		lbGroup.Spec.Cluster.Service = c.Spec.Bootstrap.Cluster.Service
+		groups = append(groups, lbGroup)
+	}
+	return groups
 }
 
 // IssuerReference returns the issuer reference for the mesh.

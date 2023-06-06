@@ -21,10 +21,6 @@ const (
 	DefaultNodeImage = "ghcr.io/webmeshproj/node:latest"
 	// DefaultNodeProxyImage is the default image to use for node proxies.
 	DefaultNodeProxyImage = "ghcr.io/webmeshproj/node-proxy:latest"
-	// DefaultNodeEnvoyImage is the default image to use for node envoys.
-	DefaultNodeEnvoyImage = "envoyproxy/envoy:distroless-v1.26.1"
-	// DefaultNodeTraefikImage is the default image to use for node traefiks.
-	DefaultNodeTraefikImage = "traefik:v3.0"
 	// DefaultRaftPort is the default port to use for Raft.
 	DefaultRaftPort = 9443
 	// DefaultGRPCPort is the default port to use for gRPC.
@@ -47,8 +43,6 @@ const (
 	NodeGroupNameLabel = "webmesh.io/nodegroup-name"
 	// NodeGroupNamespaceLabel is the label to use for the NodeGroup namespace.
 	NodeGroupNamespaceLabel = "webmesh.io/nodegroup-namespace"
-	// NodeGroupComponentLabel is the label to use for specifying the component of a NodeGroup.
-	NodeGroupComponentLabel = "webmesh.io/nodegroup-component"
 	// ConfigChecksumAnnotation is the annotation to use for configmap checksums.
 	ConfigChecksumAnnotation = "webmesh.io/config-checksum"
 	// SpecChecksumAnnotation is the annotation to use for spec checksums.
@@ -57,4 +51,6 @@ const (
 	// This should only be set by the controller for bootstrap node groups. It is also
 	// used as a label selector for bootstrap node groups.
 	BootstrapNodeGroupAnnotation = "webmesh.io/bootstrap-nodegroup"
+	// BootstrapNodeGroupLabel is the same value as BootstrapNodeGroupAnnotation.
+	BootstrapNodeGroupLabel = BootstrapNodeGroupAnnotation
 )

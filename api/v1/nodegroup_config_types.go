@@ -60,6 +60,9 @@ func (c *NodeGroupConfig) Merge(in *NodeGroupConfig) *NodeGroupConfig {
 	if in.NoIPv6 {
 		c.NoIPv6 = true
 	}
+	if in.Voter {
+		c.Voter = true
+	}
 	if in.Services != nil {
 		if c.Services == nil {
 			c.Services = &NodeServicesConfig{}

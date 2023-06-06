@@ -80,6 +80,22 @@ func (n *NodeGroupSpec) Default() {
 	}
 }
 
+// Validate validates the NodeGroupSpec.
+func (n *NodeGroupSpec) Validate() error {
+	if n.Cluster != nil {
+		if n.Cluster.Service != nil && *n.Replicas > 1 {
+			return field.Invalid(field.NewPath("spec").Child("replicas"), n.Replicas,
+				"cannot be greater than 1 when exposing the node group")
+		}
+	}
+	if n.GoogleCloud != nil {
+		if err := n.GoogleCloud.Validate(field.NewPath("spec").Child("googleCloud")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NodeGroupClusterConfig is the configuration for a group of nodes running in
 // a Kubernetes cluster.
 type NodeGroupClusterConfig struct {
@@ -195,9 +211,8 @@ type NodeGroupLBConfig struct {
 	// +optional
 	GRPCPort int32 `json:"grpcPort,omitempty"`
 
-	// WireGuardPort is the starting WireGuard port to expose. This is used
-	// for communication between nodes. Each node will have an external WireGuard
-	// port assigned to it starting from this port.
+	// WireGuardPort is the WireGuard port to expose. This is used for communication
+	// between nodes.
 	// +kubebuilder:default:=51820
 	// +optional
 	WireGuardPort int32 `json:"wireGuardPort,omitempty"`

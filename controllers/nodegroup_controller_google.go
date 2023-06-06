@@ -92,8 +92,15 @@ func (r *NodeGroupReconciler) reconcileGoogleCloudNodeGroup(ctx context.Context,
 	}
 
 	// Build the nodeconfig
-	joinServer, err := getJoinServer(ctx, r.Client, mesh)
+	joinServer, err := getJoinServer(ctx, r.Client, mesh, group)
 	if err != nil {
+		if errors.Is(err, ErrLBNotReady) {
+			log.Info("load balancer not ready, requeueing")
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: time.Second * 3,
+			}, nil
+		}
 		return ctrl.Result{}, fmt.Errorf("get join server: %w", err)
 	}
 	nodeconf, err := nodeconfig.New(nodeconfig.Options{

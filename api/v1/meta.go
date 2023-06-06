@@ -18,6 +18,7 @@ package v1
 
 import (
 	"fmt"
+	"strings"
 
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
@@ -121,19 +122,32 @@ func MeshNodeClusterFQDN(mesh *Mesh, group *NodeGroup, index int) string {
 		MeshNodeGroupHeadlessServiceFQDN(mesh, group))
 }
 
-// MeshNodeGroupPodName returns the name of the Pod for the given Mesh node group.
-func MeshNodeGroupPodName(mesh *Mesh, group *NodeGroup, index int) string {
-	return fmt.Sprintf("%s-%s-%d", mesh.GetName(), group.GetName(), index)
+// MeshNodeGroupStatefulSetName returns the name of the StatefulSet for the given Mesh node group.
+func MeshNodeGroupStatefulSetName(mesh *Mesh, group *NodeGroup) string {
+	if strings.HasPrefix(group.GetName(), mesh.GetName()) {
+		return group.GetName()
+	}
+	return fmt.Sprintf("%s-%s", mesh.GetName(), group.GetName())
 }
 
-// MeshNodeGroupHeadlessServiceName returns the name of the headless Service for the given Mesh node group.
-func MeshNodeGroupHeadlessServiceName(mesh *Mesh, group *NodeGroup) string {
-	return fmt.Sprintf("%s-%s", mesh.GetName(), group.GetName())
+// MeshNodeGroupPodName returns the name of the Pod for the given Mesh node group.
+func MeshNodeGroupPodName(mesh *Mesh, group *NodeGroup, index int) string {
+	return fmt.Sprintf("%s-%d", MeshNodeGroupStatefulSetName(mesh, group), index)
 }
 
 // MeshNodeGroupLBName returns the name of the LB Service for the given Mesh node group.
 func MeshNodeGroupLBName(mesh *Mesh, group *NodeGroup) string {
-	return fmt.Sprintf("%s-%s-lb", mesh.GetName(), group.GetName())
+	return fmt.Sprintf("%s-public", MeshNodeGroupStatefulSetName(mesh, group))
+}
+
+// MeshNodeGroupConfigMapName returns the name of the ConfigMap for the given Mesh node group.
+func MeshNodeGroupConfigMapName(mesh *Mesh, group *NodeGroup) string {
+	return MeshNodeGroupStatefulSetName(mesh, group)
+}
+
+// MeshNodeGroupHeadlessServiceName returns the name of the headless Service for the given Mesh node group.
+func MeshNodeGroupHeadlessServiceName(mesh *Mesh, group *NodeGroup) string {
+	return MeshNodeGroupStatefulSetName(mesh, group)
 }
 
 // MeshLabels returns the labels for the given Mesh.
@@ -170,29 +184,14 @@ func NodeGroupSelector(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := MeshSelector(mesh)
 	labels[NodeGroupNameLabel] = group.GetName()
 	labels[NodeGroupNamespaceLabel] = group.GetNamespace()
-	labels[NodeGroupComponentLabel] = "node"
-	return labels
-}
-
-// NodeGroupLBLabels returns the labels for the given Mesh node group's LB Service.
-func NodeGroupLBLabels(mesh *Mesh, group *NodeGroup) map[string]string {
-	labels := NodeGroupLabels(mesh, group)
-	labels[NodeGroupComponentLabel] = "lb"
-	return labels
-}
-
-// NodeGroupLBSelector returns the selector for the given Mesh node group's LB Service.
-func NodeGroupLBSelector(mesh *Mesh, group *NodeGroup) map[string]string {
-	labels := NodeGroupSelector(mesh, group)
-	labels[NodeGroupComponentLabel] = "lb"
 	return labels
 }
 
 // MeshBootstrapGroupSelector returns the selector for a Mesh's bootstrap node group.
 func MeshBootstrapGroupSelector(mesh *Mesh) map[string]string {
 	return map[string]string{
-		MeshNameLabel:                mesh.GetName(),
-		MeshNamespaceLabel:           mesh.GetNamespace(),
-		BootstrapNodeGroupAnnotation: "true",
+		MeshNameLabel:           mesh.GetName(),
+		MeshNamespaceLabel:      mesh.GetNamespace(),
+		BootstrapNodeGroupLabel: "true",
 	}
 }

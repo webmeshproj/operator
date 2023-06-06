@@ -23,7 +23,6 @@ import (
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,11 +39,10 @@ type NodeGroupReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-const foregroundDeletion = "nodegroups.mesh.webmesh.io"
+const nodeGroupsForegroundDeletion = "nodegroups.mesh.webmesh.io"
 
-//+kubebuilder:rbac:groups="",resources=persistentvolumeclaims;services;configmaps;pods,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=discovery.k8s.io,resources=endpointslices,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups/status,verbs=get;update;patch
@@ -109,9 +107,9 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Set finalizers
-	if !controllerutil.ContainsFinalizer(&group, foregroundDeletion) {
+	if !controllerutil.ContainsFinalizer(&group, nodeGroupsForegroundDeletion) {
 		log.Info("Adding finalizer to node group")
-		controllerutil.AddFinalizer(&group, foregroundDeletion)
+		controllerutil.AddFinalizer(&group, nodeGroupsForegroundDeletion)
 		if err = r.Update(ctx, &group); err != nil {
 			err = fmt.Errorf("add finalizer to node group: %w", err)
 		}
@@ -121,17 +119,35 @@ func (r *NodeGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 func (r *NodeGroupReconciler) reconcileDelete(ctx context.Context, group *meshv1.NodeGroup) error {
 	log := log.FromContext(ctx)
-	var err error
 	if group.Spec.GoogleCloud != nil {
 		log.Info("Deleting Google Cloud NodeGroup resources")
-		err = r.deleteGoogleCloudNodeGroup(ctx, group)
-	}
-	// TODO: Add other providers here
-	if err != nil {
-		return err
+		err := r.deleteGoogleCloudNodeGroup(ctx, group)
+		if err != nil {
+			return err
+		}
+	} else if group.Spec.Cluster != nil {
+		// Make sure the volumes get marked for deletion
+		log.Info("Deleting Cluster NodeGroup resources")
+		for i := 0; i < int(*group.Spec.Replicas); i++ {
+			var pvc corev1.PersistentVolumeClaim
+			err := r.Get(ctx, client.ObjectKey{
+				Name:      fmt.Sprintf("data-%s-%s-%d", group.Spec.Mesh.Name, group.Name, i),
+				Namespace: group.Namespace,
+			}, &pvc)
+			if err != nil {
+				if client.IgnoreNotFound(err) != nil {
+					return fmt.Errorf("unable to fetch PVC: %w", err)
+				}
+				err = nil
+				continue
+			}
+			if err = r.Delete(ctx, &pvc); err != nil {
+				return fmt.Errorf("unable to delete PVC: %w", err)
+			}
+		}
 	}
 	// Remove the finalizer
-	controllerutil.RemoveFinalizer(group, foregroundDeletion)
+	controllerutil.RemoveFinalizer(group, nodeGroupsForegroundDeletion)
 	if err := r.Update(ctx, group); err != nil {
 		return fmt.Errorf("failed to remove finalizer from node group: %w", err)
 	}
@@ -142,12 +158,9 @@ func (r *NodeGroupReconciler) reconcileDelete(ctx context.Context, group *meshv1
 func (r *NodeGroupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&meshv1.NodeGroup{}).
-		Owns(&corev1.Pod{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.Service{}).
-		Owns(&corev1.PersistentVolumeClaim{}).
-		Owns(&appsv1.Deployment{}).
-		Owns(&discoveryv1.EndpointSlice{}).
+		Owns(&appsv1.StatefulSet{}).
 		Owns(&certv1.Certificate{}).
 		Complete(r)
 }

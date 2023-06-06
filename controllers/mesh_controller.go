@@ -45,6 +45,9 @@ type MeshReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// TODO: Lookup referenced groups and delete them too
+const meshesForegroundDeletion = "meshes.mesh.webmesh.io"
+
 //+kubebuilder:rbac:groups="",resources=services;secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers;certificates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=mesh.webmesh.io,resources=nodegroups,verbs=get;list;watch;create;update;patch;delete
@@ -81,8 +84,10 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	toApply = append(toApply, resources.NewMeshAdminCertificate(&mesh))
 
 	// Create the bootstrap group
-	bootstrap := mesh.BootstrapGroup()
-	toApply = append(toApply, bootstrap)
+	bootstraps := mesh.BootstrapGroups()
+	for _, group := range bootstraps {
+		toApply = append(toApply, group)
+	}
 
 	// Apply the resources
 	if err := resources.Apply(ctx, r.Client, toApply); err != nil {
@@ -90,24 +95,28 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	if bootstrap.Spec.Cluster != nil {
-		if bootstrap.Spec.Cluster.Service == nil {
-			// We are done here, we can't generate an admin config
-			// without an exposed service
-			return ctrl.Result{}, nil
+	// Find the public bootstrap group, if any
+	var publicBootstrap *meshv1.NodeGroup
+	for _, group := range bootstraps {
+		if group.Spec.Cluster != nil && group.Spec.Cluster.Service != nil {
+			publicBootstrap = group
+			break
 		}
-	} else {
-		// TODO: Unimplemented
+	}
+
+	if publicBootstrap == nil {
+		// We are done here, we can't generate an admin config
+		// without an exposed service
 		return ctrl.Result{}, nil
 	}
 
-	return r.buildAdminConfig(ctx, &mesh)
+	return r.buildAdminConfig(ctx, &mesh, publicBootstrap)
 }
 
-func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh) (ctrl.Result, error) {
+func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	// Get the LB service
-	externalIPs, err := getLBExternalIPs(ctx, r.Client, mesh, mesh.BootstrapGroup())
+	externalIPs, err := getLBExternalIPs(ctx, r.Client, mesh, group)
 	if err != nil {
 		if errors.Is(err, ErrLBNotReady) {
 			log.Info("LB not ready, requeueing")

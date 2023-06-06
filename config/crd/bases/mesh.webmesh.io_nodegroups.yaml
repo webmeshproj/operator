@@ -5571,10 +5571,8 @@ spec:
                         type: string
                       wireGuardPort:
                         default: 51820
-                        description: WireGuardPort is the starting WireGuard port
-                          to expose. This is used for communication between nodes.
-                          Each node will have an external WireGuard port assigned
-                          to it starting from this port.
+                        description: WireGuardPort is the WireGuard port to expose.
+                          This is used for communication between nodes.
                         format: int32
                         type: integer
                     type: object

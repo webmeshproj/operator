@@ -18,14 +18,8 @@ package v1
 
 import (
 	"context"
-	"errors"
 
-	authv1 "k8s.io/api/authentication/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -41,7 +35,6 @@ func (r *NodeGroup) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		For(r).
 		WithValidator(&nodeGroupValidator{
 			Client: mgr.GetClient(),
-			config: mgr.GetConfig(),
 		}).
 		Complete()
 }
@@ -62,18 +55,14 @@ var _ webhook.CustomValidator = &nodeGroupValidator{}
 
 type nodeGroupValidator struct {
 	client.Client
-	config  *rest.Config
-	localID string
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *nodeGroupValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	o := obj.(*NodeGroup)
 	nodegrouplog.Info("validating create", "name", o.Name)
-	if o.Spec.GoogleCloud != nil {
-		if err := o.Spec.GoogleCloud.Validate(field.NewPath("spec").Child("googleCloud")); err != nil {
-			return nil, err
-		}
+	if err := o.Spec.Validate(); err != nil {
+		return nil, err
 	}
 	return nil, nil
 }
@@ -83,39 +72,8 @@ func (r *nodeGroupValidator) ValidateUpdate(ctx context.Context, oldObj, newObj 
 	o := oldObj.(*NodeGroup)
 	n := newObj.(*NodeGroup)
 	nodegrouplog.Info("validating update", "name", o.Name)
-	if val, ok := o.GetAnnotations()[BootstrapNodeGroupAnnotation]; ok && val == "true" {
-		// Bootstrap group can only be mutated by the controller
-		if r.localID == "" {
-			// Hit token endpoint to get local ID
-			cli, err := kubernetes.NewForConfig(r.config)
-			if err != nil {
-				return nil, err
-			}
-			res, err := cli.AuthenticationV1().TokenReviews().Create(ctx, &authv1.TokenReview{
-				Spec: authv1.TokenReviewSpec{
-					Token: r.config.BearerToken,
-				},
-			}, metav1.CreateOptions{})
-			if err != nil {
-				return nil, err
-			}
-			if !res.Status.Authenticated {
-				return nil, errors.New("unable to authenticate with API server")
-			}
-			r.localID = res.Status.User.UID
-		}
-		req, err := admission.RequestFromContext(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if req.UserInfo.UID != r.localID {
-			return nil, errors.New("bootstrap node groups can only be mutated by the Mesh controller")
-		}
-	}
-	if n.Spec.GoogleCloud != nil {
-		if err := n.Spec.GoogleCloud.Validate(field.NewPath("spec").Child("googleCloud")); err != nil {
-			return nil, err
-		}
+	if err := n.Spec.Validate(); err != nil {
+		return nil, err
 	}
 	return nil, nil
 }

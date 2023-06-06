@@ -67,6 +67,13 @@ func New(opts Options) (*Config, error) {
 	out := cloudConfig{
 		WriteFiles: []writeFile{
 			{
+				Path:        "/etc/docker/daemon.json",
+				Permissions: "0644",
+				Owner:       "root",
+				// TODO: Ensure this is compatible with the mesh network and VPC
+				Content: `{"bip": "192.168.254.1/24"}`,
+			},
+			{
 				Path:        "/etc/systemd/system/node.service",
 				Permissions: "0644",
 				Owner:       "root",

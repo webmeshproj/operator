@@ -17,8 +17,6 @@ limitations under the License.
 package resources
 
 import (
-	"fmt"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -59,14 +57,12 @@ func NewNodeGroupHeadlessService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *co
 						TargetPort: intstr.FromString("raft"),
 						Protocol:   corev1.ProtocolTCP,
 					},
-				}
-				for i := 0; i < int(*group.Spec.Replicas); i++ {
-					ports = append(ports, corev1.ServicePort{
-						Name:       fmt.Sprintf("wireguard-%d", i),
-						Port:       meshv1.DefaultWireGuardPort + int32(i),
-						TargetPort: intstr.FromInt(meshv1.DefaultWireGuardPort + i),
+					{
+						Name:       "wireguard",
+						Port:       meshv1.DefaultWireGuardPort,
+						TargetPort: intstr.FromInt(meshv1.DefaultWireGuardPort),
 						Protocol:   corev1.ProtocolUDP,
-					})
+					},
 				}
 				return ports
 			}(),
@@ -86,30 +82,28 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.S
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            meshv1.MeshNodeGroupLBName(mesh, group),
 			Namespace:       group.GetNamespace(),
-			Labels:          meshv1.NodeGroupLBLabels(mesh, group),
+			Labels:          meshv1.NodeGroupLabels(mesh, group),
 			OwnerReferences: meshv1.OwnerReferences(group),
 			Annotations:     spec.Annotations,
 		},
 		Spec: corev1.ServiceSpec{
 			Type:           spec.Type,
 			IPFamilyPolicy: &ipPolicy,
-			Selector:       meshv1.NodeGroupLBSelector(mesh, group),
+			Selector:       meshv1.NodeGroupSelector(mesh, group),
 			Ports: func() []corev1.ServicePort {
 				ports := []corev1.ServicePort{
 					{
 						Name:       "grpc",
 						Port:       spec.GRPCPort,
-						TargetPort: intstr.FromString("grpc"),
+						TargetPort: intstr.FromInt(meshv1.DefaultGRPCPort),
 						Protocol:   corev1.ProtocolTCP,
 					},
-				}
-				for i := 0; i < int(*group.Spec.Replicas); i++ {
-					ports = append(ports, corev1.ServicePort{
-						Name:       fmt.Sprintf("wireguard-%d", i),
-						Port:       spec.WireGuardPort + int32(i),
-						TargetPort: intstr.FromString(fmt.Sprintf("wireguard-%d", i)),
+					{
+						Name:       "wireguard",
+						Port:       spec.WireGuardPort,
+						TargetPort: intstr.FromInt(meshv1.DefaultWireGuardPort),
 						Protocol:   corev1.ProtocolUDP,
-					})
+					},
 				}
 				return ports
 			}(),

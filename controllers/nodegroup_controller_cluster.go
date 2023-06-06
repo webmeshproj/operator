@@ -73,12 +73,7 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 	// Create the service if we are exposing the node group
 	var externalURLs []string
 	if group.Spec.Cluster.Service != nil {
-		lbConfig, csum, err := resources.NewNodeGroupLBConfigMap(mesh, group)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		lbDeploy := resources.NewNodeGroupLBDeployment(mesh, group, csum)
-		toApply = append(toApply, lbConfig, lbDeploy, resources.NewNodeGroupLBService(mesh, group))
+		toApply = append(toApply, resources.NewNodeGroupLBService(mesh, group))
 		if group.Spec.Cluster.Service.ExternalURL != "" {
 			externalURLs = []string{group.Spec.Cluster.Service.ExternalURL}
 		} else {
@@ -103,106 +98,35 @@ func (r *NodeGroupReconciler) reconcileClusterNodeGroup(ctx context.Context, mes
 		}
 	}
 
-	// Create Node group volumes and configmaps
-	toApply = append(toApply, resources.NewNodeGroupHeadlessService(mesh, group))
-	confs := make([]*nodeconfig.Config, *group.Spec.Replicas)
-	for i := 0; i < int(*group.Spec.Replicas); i++ {
-		if group.Spec.Cluster.PVCSpec != nil {
-			toApply = append(toApply, resources.NewNodeGroupPersistentVolumeClaim(mesh, group, i))
-		}
-		conf, err := r.buildClusterNodeConfig(ctx, mesh, group, externalURLs, i)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		confs[i] = conf
-		toApply = append(toApply, resources.NewNodeGroupConfigMap(mesh, group, conf, i))
+	// Create Node group service, config, and statefulset
+	conf, err := r.buildClusterNodeConfig(ctx, mesh, group, externalURLs)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
-
+	toApply = append(toApply,
+		resources.NewNodeGroupConfigMap(mesh, group, conf),
+		resources.NewNodeGroupHeadlessService(mesh, group),
+		resources.NewNodeGroupStatefulSet(mesh, group, conf.Checksum()),
+	)
 	if err := resources.Apply(ctx, cli, toApply); err != nil {
 		log.Error(err, "unable to apply resources")
 		return ctrl.Result{}, err
 	}
 
-	// Handle pods individually
-	// var needsRequeue bool
-	for i := 0; i < int(*group.Spec.Replicas); i++ {
-		pod, err := resources.NewNodeGroupPod(mesh, group, confs[i].Checksum(), i)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		// Check if the pod exists
-		var existing corev1.Pod
-		err = cli.Get(ctx, client.ObjectKey{
-			Name:      pod.Name,
-			Namespace: pod.Namespace,
-		}, &existing)
-		if err != nil {
-			if client.IgnoreNotFound(err) != nil {
-				log.Error(err, "unable to get pod")
-				return ctrl.Result{}, err
-			}
-			// Apply the pod
-			err := resources.Apply(ctx, cli, []client.Object{pod})
-			if err != nil {
-				log.Error(err, "unable to apply pod")
-				return ctrl.Result{}, err
-			}
-			// needsRequeue = true
-		} else {
-			// Check if the spec has changed
-			existingConfSum, confSumOk := existing.Annotations[meshv1.ConfigChecksumAnnotation]
-			existingSpecSum, specSumOk := existing.Annotations[meshv1.SpecChecksumAnnotation]
-			if !confSumOk || !specSumOk || existingConfSum != confs[i].Checksum() || existingSpecSum != pod.Annotations[meshv1.SpecChecksumAnnotation] {
-				// TODO: Depending on the role of the group - this may need to be done gracefully
-				// Delete the pod
-				err := cli.Delete(ctx, &existing)
-				if err != nil {
-					log.Error(err, "unable to delete pod")
-					return ctrl.Result{}, err
-				}
-				// Apply the pod
-				err = resources.Apply(ctx, cli, []client.Object{pod})
-				if err != nil {
-					log.Error(err, "unable to apply pod")
-					return ctrl.Result{}, err
-				}
-				// needsRequeue = true
-			}
-			// // Create endpoint slices for the pod
-			// endpoints, err := resources.NewNodeGroupPodEndpointSlices(mesh, group, &existing, i)
-			// if err != nil {
-			// 	return ctrl.Result{}, err
-			// }
-			// eps := make([]client.Object, len(endpoints))
-			// for i, ep := range endpoints {
-			// 	eps[i] = ep
-			// }
-			// err = resources.Apply(ctx, cli, eps)
-			// if err != nil {
-			// 	log.Error(err, "unable to apply endpoint slices")
-			// 	return ctrl.Result{}, err
-			// }
-		}
-	}
-
-	// if needsRequeue {
-	// 	return ctrl.Result{Requeue: true, RequeueAfter: time.Second}, nil
-	// }
-
 	return ctrl.Result{}, nil
 }
 
-func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURLs []string, index int) (*nodeconfig.Config, error) {
+func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, externalURLs []string) (*nodeconfig.Config, error) {
 	var isBootstrap bool
 	if val, ok := group.GetAnnotations()[meshv1.BootstrapNodeGroupAnnotation]; ok && val == "true" {
 		isBootstrap = true
 	}
 	var primaryEndpoint string
-	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort+index)
+	internalEndpoint := fmt.Sprintf(`{{ env "POD_NAME" }}.%s:%d`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), meshv1.DefaultWireGuardPort)
 	wireguardEndpoints := []string{internalEndpoint}
 	if len(externalURLs) > 0 {
 		primaryEndpoint = externalURLs[0]
-		startPort := func() int {
+		wgPort := func() int {
 			if group.Spec.Cluster.Service != nil {
 				return int(group.Spec.Cluster.Service.WireGuardPort)
 			}
@@ -215,14 +139,12 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 			}
 			var externalEndpoint string
 			if addr.Is4() {
-				externalEndpoint = fmt.Sprintf(`%s:%d`, url, startPort+index)
+				externalEndpoint = fmt.Sprintf(`%s:%d`, url, wgPort)
 			} else {
-				externalEndpoint = fmt.Sprintf(`[%s]:%d`, url, startPort+index)
+				externalEndpoint = fmt.Sprintf(`[%s]:%d`, url, wgPort)
 			}
 			wireguardEndpoints = append(wireguardEndpoints, externalEndpoint)
 		}
-	} else if isBootstrap {
-		primaryEndpoint = fmt.Sprintf(`{{ env "POD_NAME" }}.%s`, meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group))
 	}
 	var advertiseAddress string
 	var joinServer string
@@ -236,7 +158,7 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 		}
 	} else {
 		var err error
-		joinServer, err = getJoinServer(ctx, r.Client, mesh)
+		joinServer, err = getJoinServer(ctx, r.Client, mesh, group)
 		if err != nil {
 			return nil, fmt.Errorf("get join server: %w", err)
 		}
@@ -251,8 +173,8 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 		BootstrapServers:    bootstrapServers,
 		JoinServer:          joinServer,
 		IsPersistent:        group.Spec.Cluster.PVCSpec != nil,
-		CertDir:             meshv1.DefaultTLSDirectory,
-		WireGuardListenPort: meshv1.DefaultWireGuardPort + index,
+		CertDir:             fmt.Sprintf(`%s/{{ env "POD_NAME" }}`, meshv1.DefaultTLSDirectory),
+		WireGuardListenPort: meshv1.DefaultWireGuardPort,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build node config: %w", err)

@@ -155,7 +155,7 @@ func New(opts Options) (*Config, error) {
 		}
 		nodeopts.Store.Join = opts.JoinServer
 		nodeopts.Store.JoinAsVoter = groupcfg.Voter
-		nodeopts.Store.LeaveOnShutdown = true // TODO: Make this a separate option
+		nodeopts.Store.LeaveOnShutdown = true // TODO: Make these separate options
 	}
 
 	// Storage options
