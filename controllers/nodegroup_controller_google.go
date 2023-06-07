@@ -191,7 +191,7 @@ func (r *NodeGroupReconciler) reconcileGoogleCloudNodeGroup(ctx context.Context,
 				Name:         &name,
 				Description:  &description,
 				MachineType:  pointer(fmt.Sprintf("zones/%s/machineTypes/%s", spec.Zone, spec.MachineType)),
-				Labels:       group.GetLabels(),
+				Labels:       map[string]string{"mesh": mesh.GetName(), "group": group.GetName()},
 				CanIpForward: pointer(true),
 				AdvancedMachineFeatures: &computepb.AdvancedMachineFeatures{
 					EnableUefiNetworking: pointer(true),

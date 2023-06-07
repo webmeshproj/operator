@@ -2,6 +2,8 @@ apiVersion: mesh.webmesh.io/v1
 kind: NodeGroup
 metadata:
   name: gcloud-nodegroup
+  labels:
+    webmesh.io/zone-awareness: mesh-sample-bootstrap
 spec:
   googleCloud:
     projectID: webmeshproj
@@ -11,5 +13,8 @@ spec:
     tags: ["mesh-nodes"]
   config:
     logLevel: debug
+    services:
+      enableMeshAPI: true
+      enableLeaderProxy: true
   mesh:
     name: mesh-sample

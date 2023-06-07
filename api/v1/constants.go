@@ -51,6 +51,9 @@ const (
 	// This should only be set by the controller for bootstrap node groups. It is also
 	// used as a label selector for bootstrap node groups.
 	BootstrapNodeGroupAnnotation = "webmesh.io/bootstrap-nodegroup"
+	// ZoneAwarenessLabel is a label placed on NodeGroups to override the default
+	// zone awareness behavior.
+	ZoneAwarenessLabel = "webmesh.io/zone-awareness"
 	// BootstrapNodeGroupLabel is the same value as BootstrapNodeGroupAnnotation.
 	BootstrapNodeGroupLabel = BootstrapNodeGroupAnnotation
 )

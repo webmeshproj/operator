@@ -120,6 +120,11 @@ func (c *Mesh) BootstrapGroups() []*NodeGroup {
 		lbGroup.SetName(fmt.Sprintf("%s-bootstrap-lb", c.GetName()))
 		// This is not a bootstrap group, it joins the initial group
 		delete(lbGroup.Annotations, BootstrapNodeGroupAnnotation)
+		// But we give it the same zone awareness as the bootstrap group
+		if lbGroup.Labels == nil {
+			lbGroup.Labels = map[string]string{}
+		}
+		lbGroup.Labels[ZoneAwarenessLabel] = bootstrapGroup.GetName()
 		lbGroup.Spec.Replicas = nil
 		if lbGroup.Spec.Config == nil {
 			lbGroup.Spec.Config = &NodeGroupConfig{}

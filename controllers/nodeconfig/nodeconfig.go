@@ -116,7 +116,11 @@ func New(opts Options) (*Config, error) {
 	}
 
 	// Endpoint and zone awareness options
-	nodeopts.Store.ZoneAwarenessID = group.GetName()
+	zoneAwarenessID := group.GetName()
+	if id, ok := group.Labels[meshv1.ZoneAwarenessLabel]; ok {
+		zoneAwarenessID = id
+	}
+	nodeopts.Store.ZoneAwarenessID = zoneAwarenessID
 	nodeopts.Store.NodeEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
 		wgEndpoints := sort.StringSlice(opts.WireGuardEndpoints)
