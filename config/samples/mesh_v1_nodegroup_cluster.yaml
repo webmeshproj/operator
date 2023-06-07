@@ -2,6 +2,8 @@ apiVersion: mesh.webmesh.io/v1
 kind: NodeGroup
 metadata:
   name: cluster-nodegroup
+  labels:
+    webmesh.io/zone-awareness: mesh-sample-bootstrap
 spec:
   replicas: 1
   cluster:
