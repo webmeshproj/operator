@@ -87,9 +87,10 @@ func NewNodeGroupLBService(mesh *meshv1.Mesh, group *meshv1.NodeGroup) *corev1.S
 			Annotations:     spec.Annotations,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:           spec.Type,
-			IPFamilyPolicy: &ipPolicy,
-			Selector:       meshv1.NodeGroupSelector(mesh, group),
+			Type:                  spec.Type,
+			IPFamilyPolicy:        &ipPolicy,
+			Selector:              meshv1.NodeGroupSelector(mesh, group),
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyTypeLocal,
 			Ports: func() []corev1.ServicePort {
 				ports := []corev1.ServicePort{
 					{

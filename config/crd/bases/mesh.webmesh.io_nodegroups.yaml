@@ -5815,6 +5815,10 @@ spec:
                     description: Services is the configuration for services enabled
                       for this group.
                     properties:
+                      enableAdminAPI:
+                        description: EnableAdminAPI is true if the admin API should
+                          be enabled for this group.
+                        type: boolean
                       enableLeaderProxy:
                         description: EnableLeaderProxy is true if leader proxy should
                           be enabled for this group.

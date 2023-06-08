@@ -111,6 +111,11 @@ type NodeServicesConfig struct {
 	// this group.
 	// +optional
 	EnablePeerDiscoveryAPI bool `json:"enablePeerDiscoveryAPI,omitempty"`
+
+	// EnableAdminAPI is true if the admin API should be enabled for this
+	// group.
+	// +optional
+	EnableAdminAPI bool `json:"enableAdminAPI,omitempty"`
 }
 
 // Merge merges the given NodeServicesConfig into this NodeServicesConfig. The
@@ -146,6 +151,9 @@ func (c *NodeServicesConfig) Merge(in *NodeServicesConfig) *NodeServicesConfig {
 	}
 	if in.EnablePeerDiscoveryAPI {
 		c.EnablePeerDiscoveryAPI = true
+	}
+	if in.EnableAdminAPI {
+		c.EnableAdminAPI = true
 	}
 	return c
 }

@@ -17,8 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"fmt"
-
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,19 +87,30 @@ func (c *Mesh) BootstrapGroups() []*NodeGroup {
 		annotations = map[string]string{}
 	}
 	annotations[BootstrapNodeGroupAnnotation] = "true"
+	spec := c.Spec.Bootstrap.DeepCopy()
+	if spec.Config == nil {
+		spec.Config = &NodeGroupConfig{}
+	}
+	if spec.Config.Services == nil {
+		spec.Config.Services = &NodeServicesConfig{}
+	}
+	// Force the admin api, mesh api, and leader proxy on the bootstrap groups
+	spec.Config.Services.EnableAdminAPI = true
+	spec.Config.Services.EnableMeshAPI = true
+	spec.Config.Services.EnableLeaderProxy = true
 	bootstrapGroup := NodeGroup{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: GroupVersion.String(),
 			Kind:       "NodeGroup",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            fmt.Sprintf("%s-bootstrap", c.GetName()),
+			Name:            MeshBootstrapGroupName(c),
 			Namespace:       c.GetNamespace(),
 			Labels:          labels,
 			Annotations:     annotations,
 			OwnerReferences: OwnerReferences(c),
 		},
-		Spec: *c.Spec.Bootstrap.DeepCopy(),
+		Spec: *spec,
 	}
 	if bootstrapGroup.Spec.Cluster.Service != nil {
 		// Force this to be nil, we expose via a separate node group.
@@ -117,7 +126,7 @@ func (c *Mesh) BootstrapGroups() []*NodeGroup {
 	// Create an LB group if we are exposing the bootstrap group.
 	if c.Spec.Bootstrap.Cluster.Service != nil {
 		lbGroup := bootstrapGroup.DeepCopy()
-		lbGroup.SetName(fmt.Sprintf("%s-bootstrap-lb", c.GetName()))
+		lbGroup.SetName(MeshBootstrapLBGroupName(c))
 		// This is not a bootstrap group, it joins the initial group
 		delete(lbGroup.Annotations, BootstrapNodeGroupAnnotation)
 		// But we give it the same zone awareness as the bootstrap group
@@ -125,16 +134,9 @@ func (c *Mesh) BootstrapGroups() []*NodeGroup {
 			lbGroup.Labels = map[string]string{}
 		}
 		lbGroup.Labels[ZoneAwarenessLabel] = bootstrapGroup.GetName()
+		// We only run a single replica of the load balancer group
 		lbGroup.Spec.Replicas = nil
-		if lbGroup.Spec.Config == nil {
-			lbGroup.Spec.Config = &NodeGroupConfig{}
-		}
 		lbGroup.Spec.Config.Voter = true
-		if lbGroup.Spec.Config.Services == nil {
-			lbGroup.Spec.Config.Services = &NodeServicesConfig{}
-		}
-		lbGroup.Spec.Config.Services.EnableLeaderProxy = true
-		lbGroup.Spec.Config.Services.EnableMeshAPI = true
 		lbGroup.Spec.Cluster.Service = c.Spec.Bootstrap.Cluster.Service
 		groups = append(groups, lbGroup)
 	}

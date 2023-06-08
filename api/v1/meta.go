@@ -79,6 +79,16 @@ func MeshSelfSignerRef(mesh *Mesh) cmmeta.ObjectReference {
 	}
 }
 
+// MeshBootstrapGroupName returns the name of the bootstrap group for the given Mesh.
+func MeshBootstrapGroupName(mesh *Mesh) string {
+	return fmt.Sprintf("%s-bootstrap", mesh.GetName())
+}
+
+// MeshBootstrapLBGroupName returns the name of the bootstrap load balancer group for the given Mesh.
+func MeshBootstrapLBGroupName(mesh *Mesh) string {
+	return fmt.Sprintf("%s-bootstrap-lb", mesh.GetName())
+}
+
 // MeshNodeCertName returns the name of the node certificate for the given Mesh.
 func MeshNodeCertName(mesh *Mesh, group *NodeGroup, index int) string {
 	return MeshNodeGroupPodName(mesh, group, index)

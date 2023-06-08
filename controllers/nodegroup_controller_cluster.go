@@ -148,6 +148,7 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 	}
 	var advertiseAddress string
 	var joinServer string
+	var bootstrapVoters []string
 	bootstrapServers := make(map[string]string)
 	if isBootstrap {
 		if *group.Spec.Replicas > 1 {
@@ -155,6 +156,10 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 			for i := 0; i < int(*group.Spec.Replicas); i++ {
 				bootstrapServers[meshv1.MeshNodeHostname(mesh, group, i)] = fmt.Sprintf("%s:%d", meshv1.MeshNodeClusterFQDN(mesh, group, i), meshv1.DefaultRaftPort)
 			}
+		}
+		if mesh.Spec.Bootstrap.Cluster != nil && mesh.Spec.Bootstrap.Cluster.Service != nil {
+			// Make sure the lb node can vote in the cluster
+			bootstrapVoters = append(bootstrapVoters, fmt.Sprintf("%s-0", meshv1.MeshBootstrapLBGroupName(mesh)))
 		}
 	} else {
 		var err error
@@ -171,6 +176,7 @@ func (r *NodeGroupReconciler) buildClusterNodeConfig(ctx context.Context, mesh *
 		WireGuardEndpoints:  wireguardEndpoints,
 		IsBootstrap:         isBootstrap,
 		BootstrapServers:    bootstrapServers,
+		BootstrapVoters:     bootstrapVoters,
 		JoinServer:          joinServer,
 		IsPersistent:        group.Spec.Cluster.PVCSpec != nil,
 		CertDir:             fmt.Sprintf(`%s/{{ env "POD_NAME" }}`, meshv1.DefaultTLSDirectory),

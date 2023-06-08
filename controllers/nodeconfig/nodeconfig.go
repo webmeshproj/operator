@@ -51,6 +51,8 @@ type Options struct {
 	IsBootstrap bool
 	// BootstrapServers are the bootstrap servers.
 	BootstrapServers map[string]string
+	// BootstrapVoters are additional bootstrap voters.
+	BootstrapVoters []string
 	// JoinServer is the join server.
 	JoinServer string
 	// IsPersistent is true if this is a persistent node group.
@@ -123,10 +125,8 @@ func New(opts Options) (*Config, error) {
 	nodeopts.Store.ZoneAwarenessID = zoneAwarenessID
 	nodeopts.Store.NodeEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
-		wgEndpoints := sort.StringSlice(opts.WireGuardEndpoints)
-		// Sort the WireGuard endpoints to ensure a consistent order
-		sort.Sort(wgEndpoints)
-		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(wgEndpoints, ",")
+		sort.Strings(opts.WireGuardEndpoints)
+		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(opts.WireGuardEndpoints, ",")
 	}
 
 	// WireGuard options
@@ -139,8 +139,11 @@ func New(opts Options) (*Config, error) {
 	// Bootstrap options
 	if opts.IsBootstrap {
 		nodeopts.Store.Bootstrap = true
-		// TODO: Create ACLs automatically for new nodes
-		// nodeopts.Store.BootstrapWithRaftACLs = true
+		nodeopts.Store.BootstrapAdmin = meshv1.MeshAdminHostname(mesh)
+		if len(opts.BootstrapVoters) > 0 {
+			sort.Strings(opts.BootstrapVoters)
+			nodeopts.Store.BootstrapVoters = strings.Join(opts.BootstrapVoters, ",")
+		}
 		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
 		nodeopts.Services.EnableLeaderProxy = true
 		nodeopts.Store.AdvertiseAddress = opts.AdvertiseAddress
@@ -178,6 +181,7 @@ func New(opts Options) (*Config, error) {
 		nodeopts.Services.EnableMeshDNS = groupcfg.Services.MeshDNS != nil
 		nodeopts.Services.EnableMeshAPI = groupcfg.Services.EnableMeshAPI
 		nodeopts.Services.EnablePeerDiscoveryAPI = groupcfg.Services.EnablePeerDiscoveryAPI
+		nodeopts.Services.EnableAdminAPI = groupcfg.Services.EnableAdminAPI
 		if groupcfg.Services.Metrics != nil {
 			nodeopts.Services.MetricsListenAddress = groupcfg.Services.Metrics.ListenAddress
 			nodeopts.Services.MetricsPath = groupcfg.Services.Metrics.Path
