@@ -27,13 +27,15 @@ import (
 	certv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
 	ctlconfig "github.com/webmeshproj/node/pkg/ctlcmd/config"
-	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 	"github.com/webmeshproj/operator/controllers/resources"
@@ -95,6 +97,30 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
+	// Get the admin certificate
+	var cert corev1.Secret
+	err := r.Get(ctx, client.ObjectKey{
+		Name:      meshv1.MeshAdminCertName(&mesh),
+		Namespace: mesh.GetNamespace(),
+	}, &cert)
+	if err != nil {
+		log.Error(err, "unable to fetch admin certificate secret")
+		return ctrl.Result{}, err
+	}
+	for _, key := range []string{corev1.TLSCertKey, corev1.TLSPrivateKeyKey, cmmeta.TLSCAKey} {
+		if data, ok := cert.Data[key]; !ok || len(data) == 0 {
+			log.Info("admin certificate secret missing data, requeueing")
+			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
+		}
+	}
+
+	// Write the manager config
+	err = r.writeManagerConfig(ctx, &mesh, bootstraps[0], &cert)
+	if err != nil {
+		log.Error(err, "unable to write manager config")
+		return ctrl.Result{}, err
+	}
+
 	// Find the public bootstrap group, if any
 	var publicBootstrap *meshv1.NodeGroup
 	for _, group := range bootstraps {
@@ -110,10 +136,64 @@ func (r *MeshReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	return r.buildAdminConfig(ctx, &mesh, publicBootstrap)
+	return r.writeAdminConfig(ctx, &mesh, publicBootstrap, &cert)
 }
 
-func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup) (ctrl.Result, error) {
+func (r *MeshReconciler) writeManagerConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, cert *corev1.Secret) error {
+	config := ctlconfig.New()
+	config.Clusters = []ctlconfig.Cluster{
+		{
+			Name: mesh.GetName(),
+			Cluster: ctlconfig.ClusterConfig{
+				Server:                   fmt.Sprintf("%s:%d", meshv1.MeshNodeGroupHeadlessServiceFQDN(mesh, group), mesh.Spec.Bootstrap.Cluster.Service.GRPCPort),
+				TLSVerifyChainOnly:       true,
+				CertificateAuthorityData: base64.StdEncoding.EncodeToString(cert.Data[cmmeta.TLSCAKey]),
+			},
+		},
+	}
+	config.Users = []ctlconfig.User{
+		{
+			Name: mesh.GetName(),
+			User: ctlconfig.UserConfig{
+				ClientCertificateData: base64.StdEncoding.EncodeToString(cert.Data[corev1.TLSCertKey]),
+				ClientKeyData:         base64.StdEncoding.EncodeToString(cert.Data[corev1.TLSPrivateKeyKey]),
+			},
+		},
+	}
+	config.Contexts = []ctlconfig.Context{
+		{
+			Name: mesh.GetName(),
+			Context: ctlconfig.ContextConfig{
+				Cluster: mesh.GetName(),
+				User:    mesh.GetName(),
+			},
+		},
+	}
+	config.CurrentContext = mesh.GetName()
+	var buf bytes.Buffer
+	err := config.Marshal(&buf)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return resources.Apply(ctx, r.Client, []client.Object{&corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: corev1.SchemeGroupVersion.String(),
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            meshv1.MeshManagerConfigName(mesh),
+			Namespace:       mesh.GetNamespace(),
+			Labels:          meshv1.MeshLabels(mesh),
+			Annotations:     mesh.GetAnnotations(),
+			OwnerReferences: meshv1.OwnerReferences(mesh),
+		},
+		Data: map[string][]byte{
+			"config.yaml": buf.Bytes(),
+		},
+	}})
+}
+
+func (r *MeshReconciler) writeAdminConfig(ctx context.Context, mesh *meshv1.Mesh, group *meshv1.NodeGroup, cert *corev1.Secret) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	// Get the LB service
 	externalIPs, err := getLBExternalIPs(ctx, r.Client, mesh, group)
@@ -125,45 +205,29 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 		log.Error(err, "unable to get LB external IP")
 		return ctrl.Result{}, err
 	}
-	// Get the admin certificate
-	var secret corev1.Secret
-	err = r.Get(ctx, client.ObjectKey{
-		Name:      meshv1.MeshAdminCertName(mesh),
-		Namespace: mesh.GetNamespace(),
-	}, &secret)
-	if err != nil {
-		log.Error(err, "unable to fetch admin certificate secret")
-		return ctrl.Result{}, err
-	}
-	for _, key := range []string{corev1.TLSCertKey, corev1.TLSPrivateKeyKey, cmmeta.TLSCAKey} {
-		if data, ok := secret.Data[key]; !ok || len(data) == 0 {
-			log.Info("admin certificate secret missing data, requeueing")
-			return ctrl.Result{Requeue: true, RequeueAfter: time.Second * 3}, nil
-		}
-	}
 
 	// Create a config for the admin
-	adminConfig := ctlconfig.New()
-	adminConfig.Clusters = []ctlconfig.Cluster{
+	config := ctlconfig.New()
+	config.Clusters = []ctlconfig.Cluster{
 		{
 			Name: mesh.GetName(),
 			Cluster: ctlconfig.ClusterConfig{
 				Server:                   fmt.Sprintf("%s:%d", externalIPs[0], mesh.Spec.Bootstrap.Cluster.Service.GRPCPort),
 				TLSVerifyChainOnly:       true,
-				CertificateAuthorityData: base64.StdEncoding.EncodeToString(secret.Data[cmmeta.TLSCAKey]),
+				CertificateAuthorityData: base64.StdEncoding.EncodeToString(cert.Data[cmmeta.TLSCAKey]),
 			},
 		},
 	}
-	adminConfig.Users = []ctlconfig.User{
+	config.Users = []ctlconfig.User{
 		{
 			Name: mesh.GetName() + "-admin",
 			User: ctlconfig.UserConfig{
-				ClientCertificateData: base64.StdEncoding.EncodeToString(secret.Data[corev1.TLSCertKey]),
-				ClientKeyData:         base64.StdEncoding.EncodeToString(secret.Data[corev1.TLSPrivateKeyKey]),
+				ClientCertificateData: base64.StdEncoding.EncodeToString(cert.Data[corev1.TLSCertKey]),
+				ClientKeyData:         base64.StdEncoding.EncodeToString(cert.Data[corev1.TLSPrivateKeyKey]),
 			},
 		},
 	}
-	adminConfig.Contexts = []ctlconfig.Context{
+	config.Contexts = []ctlconfig.Context{
 		{
 			Name: mesh.GetName(),
 			Context: ctlconfig.ContextConfig{
@@ -172,12 +236,10 @@ func (r *MeshReconciler) buildAdminConfig(ctx context.Context, mesh *meshv1.Mesh
 			},
 		},
 	}
-	adminConfig.CurrentContext = mesh.GetName()
+	config.CurrentContext = mesh.GetName()
 
 	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	err = enc.Encode(adminConfig)
+	err = config.Marshal(&buf)
 	if err != nil {
 		log.Error(err, "unable to marshal admin config")
 		return ctrl.Result{}, err
@@ -216,5 +278,24 @@ func (r *MeshReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&certv1.ClusterIssuer{}).
 		Owns(&certv1.Issuer{}).
 		Owns(&certv1.Certificate{}).
+		Watches(&corev1.Service{}, handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
+			refs := o.GetOwnerReferences()
+			labels := o.GetAnnotations()
+			for _, ref := range refs {
+				if ref.Kind == "NodeGroup" {
+					if _, ok := labels[meshv1.BootstrapNodeGroupLabel]; ok {
+						return []reconcile.Request{
+							{
+								NamespacedName: types.NamespacedName{
+									Name:      labels[meshv1.MeshNameLabel],
+									Namespace: o.GetNamespace(),
+								},
+							},
+						}
+					}
+				}
+			}
+			return nil
+		})).
 		Complete(r)
 }

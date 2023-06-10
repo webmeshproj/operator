@@ -49,10 +49,24 @@ type MeshSpec struct {
 	// +optional
 	IPv4 string `json:"ipv4,omitempty"`
 
+	// DefaultNetworkPolicy is the default network policy to use for
+	// the mesh. This can only be changed after creation via the API.
+	// +kubebuilder:default:="deny"
+	// +kubebuilder:validation:Enum:=deny;accept
+	// +optional
+	DefaultNetworkPolicy NetworkPolicyType `json:"defaultNetworkPolicy,omitempty"`
+
 	// Issuer is the configuration for issuing TLS certificates.
 	// +optional
 	Issuer IssuerConfig `json:"issuer,omitempty"`
 }
+
+type NetworkPolicyType string
+
+const (
+	NetworkPolicyTypeDeny  NetworkPolicyType = "deny"
+	NetworkPolicyTypeAllow NetworkPolicyType = "accept"
+)
 
 // IssuerConfig defines the configuration for issuing TLS certificates.
 type IssuerConfig struct {

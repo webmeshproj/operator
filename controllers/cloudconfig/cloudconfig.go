@@ -166,7 +166,7 @@ func nodeContainerUnit(opts *Options) string {
 		DataDir string
 	}{
 		Image:   opts.Image,
-		DataDir: opts.Config.Options.Store.DataDir,
+		DataDir: opts.Config.Options.Mesh.Raft.DataDir,
 	})
 	return buf.String()
 }

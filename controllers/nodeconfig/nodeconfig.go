@@ -28,7 +28,6 @@ import (
 
 	"github.com/webmeshproj/node/pkg/global"
 	"github.com/webmeshproj/node/pkg/nodecmd"
-	"gopkg.in/yaml.v3"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -122,55 +121,55 @@ func New(opts Options) (*Config, error) {
 	if id, ok := group.Labels[meshv1.ZoneAwarenessLabel]; ok {
 		zoneAwarenessID = id
 	}
-	nodeopts.Store.ZoneAwarenessID = zoneAwarenessID
-	nodeopts.Store.NodeEndpoint = opts.PrimaryEndpoint
+	nodeopts.Mesh.Mesh.ZoneAwarenessID = zoneAwarenessID
+	nodeopts.Mesh.Mesh.PrimaryEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
 		sort.Strings(opts.WireGuardEndpoints)
-		nodeopts.Store.NodeWireGuardEndpoints = strings.Join(opts.WireGuardEndpoints, ",")
+		nodeopts.Mesh.Mesh.WireGuardEndpoints = strings.Join(opts.WireGuardEndpoints, ",")
 	}
 
 	// WireGuard options
-	nodeopts.Wireguard.PersistentKeepAlive = opts.PersistentKeepalive
-	nodeopts.Wireguard.ForceName = true
+	nodeopts.Mesh.WireGuard.PersistentKeepAlive = opts.PersistentKeepalive
+	nodeopts.Mesh.WireGuard.ForceInterfaceName = true
 	if opts.WireGuardListenPort > 0 {
-		nodeopts.Wireguard.ListenPort = opts.WireGuardListenPort
+		nodeopts.Mesh.WireGuard.ListenPort = opts.WireGuardListenPort
 	}
 
 	// Bootstrap options
 	if opts.IsBootstrap {
-		nodeopts.Store.Bootstrap = true
-		nodeopts.Store.BootstrapAdmin = meshv1.MeshAdminHostname(mesh)
+		nodeopts.Mesh.Bootstrap.Enabled = true
+		nodeopts.Mesh.Bootstrap.Admin = meshv1.MeshAdminHostname(mesh)
+		nodeopts.Mesh.Bootstrap.IPv4Network = mesh.Spec.IPv4
+		nodeopts.Mesh.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
+		nodeopts.Services.EnableLeaderProxy = true
+		nodeopts.Mesh.Bootstrap.AdvertiseAddress = opts.AdvertiseAddress
 		if len(opts.BootstrapVoters) > 0 {
 			sort.Strings(opts.BootstrapVoters)
-			nodeopts.Store.BootstrapVoters = strings.Join(opts.BootstrapVoters, ",")
+			nodeopts.Mesh.Bootstrap.Voters = strings.Join(opts.BootstrapVoters, ",")
 		}
-		nodeopts.Store.Options.BootstrapIPv4Network = mesh.Spec.IPv4
-		nodeopts.Services.EnableLeaderProxy = true
-		nodeopts.Store.AdvertiseAddress = opts.AdvertiseAddress
 		if len(opts.BootstrapServers) > 0 {
 			var bootstrapServers sort.StringSlice
 			for name, addr := range opts.BootstrapServers {
 				bootstrapServers = append(bootstrapServers, fmt.Sprintf("%s=%s", name, addr))
 			}
-			// Sort the bootstrap servers to ensure a consistent order
 			sort.Sort(bootstrapServers)
-			nodeopts.Store.Options.BootstrapServers = strings.Join(bootstrapServers, ",")
+			nodeopts.Mesh.Bootstrap.Servers = strings.Join(bootstrapServers, ",")
 		}
 	} else {
 		if opts.JoinServer == "" {
 			return nil, fmt.Errorf("join server is required for non bootstrap node groups")
 		}
-		nodeopts.Store.Join = opts.JoinServer
-		nodeopts.Store.JoinAsVoter = groupcfg.Voter
-		nodeopts.Store.LeaveOnShutdown = true // TODO: Make these separate options
+		nodeopts.Mesh.Mesh.JoinAddress = opts.JoinServer
+		nodeopts.Mesh.Mesh.JoinAsVoter = groupcfg.Voter
+		nodeopts.Mesh.Raft.LeaveOnShutdown = true // TODO: Make these separate options
 	}
 
 	// Storage options
 	if opts.IsPersistent {
-		nodeopts.Store.Options.DataDir = meshv1.DefaultDataDirectory
+		nodeopts.Mesh.Raft.DataDir = meshv1.DefaultDataDirectory
 	} else {
-		nodeopts.Store.Options.DataDir = ""
-		nodeopts.Store.Options.InMemory = true
+		nodeopts.Mesh.Raft.DataDir = ""
+		nodeopts.Mesh.Raft.InMemory = true
 	}
 
 	// Service options
@@ -197,9 +196,7 @@ func New(opts Options) (*Config, error) {
 
 	// Build the config
 	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	err := enc.Encode(nodeopts)
+	err := nodeopts.MarshalTo(&buf)
 	if err != nil {
 		return nil, fmt.Errorf("marshal config: %w", err)
 	}

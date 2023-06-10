@@ -66,6 +66,11 @@ func MeshAdminConfigName(mesh *Mesh) string {
 	return fmt.Sprintf("%s-admin-config", mesh.GetName())
 }
 
+// MeshManagerConfigName returns the name of the manager config for the given Mesh.
+func MeshManagerConfigName(mesh *Mesh) string {
+	return fmt.Sprintf("%s-manager-config", mesh.GetName())
+}
+
 // MeshAdminHostname returns the hostname for the given Mesh admin.
 func MeshAdminHostname(mesh *Mesh) string {
 	return fmt.Sprintf("%s-admin", mesh.GetName())
@@ -183,8 +188,14 @@ func MeshSelector(mesh *Mesh) map[string]string {
 // NodeGroupLabels returns the labels for the given Mesh node group.
 func NodeGroupLabels(mesh *Mesh, group *NodeGroup) map[string]string {
 	labels := MeshLabels(mesh)
+	groupLabels := group.GetLabels()
 	for k, v := range NodeGroupSelector(mesh, group) {
 		labels[k] = v
+	}
+	if groupLabels != nil {
+		for k, v := range groupLabels {
+			labels[k] = v
+		}
 	}
 	return labels
 }

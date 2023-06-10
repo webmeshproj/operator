@@ -5,6 +5,7 @@ metadata:
 spec:
   issuer:
     create: true
+  defaultNetworkPolicy: accept
   bootstrap:
     replicas: 3
     cluster:

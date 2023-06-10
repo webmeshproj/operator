@@ -6309,6 +6309,15 @@ spec:
                 description: ConfigGroups is a map of configurations for groups of
                   nodes. These can be referenced by name in NodeGroupSpecs.
                 type: object
+              defaultNetworkPolicy:
+                default: deny
+                description: DefaultNetworkPolicy is the default network policy to
+                  use for the mesh. This can only be changed after creation via the
+                  API.
+                enum:
+                - deny
+                - accept
+                type: string
               image:
                 default: ghcr.io/webmeshproj/node:latest
                 description: Image is the default image to use for configurations
