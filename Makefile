@@ -13,8 +13,8 @@ endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
-SHELL = /usr/bin/env bash -o pipefail
-.SHELLFLAGS = -ec
+SHELL ?= /usr/bin/env bash -o pipefail
+.SHELLFLAGS ?= -ec
 
 .PHONY: all
 all: build
@@ -65,40 +65,71 @@ VERSION_PKG := github.com/webmeshproj/$(NAME)/controllers/version
 VERSION     := $(shell git describe --tags --always --dirty)
 COMMIT      := $(shell git rev-parse HEAD)
 DATE        := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS     ?= -s -w -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).Commit=$(COMMIT) -X $(VERSION_PKG).BuildDate=$(DATE)
+LDFLAGS     ?= -s -w -extldflags=-static \
+			   -X $(VERSION_PKG).Version=$(VERSION) \
+			   -X $(VERSION_PKG).Commit=$(COMMIT) \
+			   -X $(VERSION_PKG).BuildDate=$(DATE)
+BUILD_TAGS  ?= osusergo,netgo,sqlite_omit_load_extension
 
 ARCH      ?= $(shell go env GOARCH)
 OS        ?= $(shell go env GOOS)
-PLATFORMS ?= linux/arm linux/arm64 linux/amd64
 DIST      := $(CURDIR)/dist
 
 .PHONY: build
 build: fmt vet generate ## Build operator binary.
-	CGO_ENABLED=0 go build \
-		-tags netgo \
+	go build \
+		-tags "$(BUILD_TAGS)" \
 		-ldflags "$(LDFLAGS)" \
-		-o $(DIST)/$(NAME)_$(OS)_$(ARCH) \
+		-o "$(DIST)/$(NAME)_$(OS)_$(ARCH)" \
 		main.go
 
+BUILD_IMAGE ?= ghcr.io/webmeshproj/operator-build:latest
+build-image: ## Build the node build image.
+	docker buildx build -t $(BUILD_IMAGE) -f Dockerfile.build --load .
+
 .PHONY: dist
-dist: ## Build operator binaries for all platforms.
-	go install github.com/mitchellh/gox@latest
-	CGO_ENABLED=0 gox \
-		-tags netgo \
-		-ldflags "$(LDFLAGS)" \
-		-osarch="$(PLATFORMS)" \
-		-output="$(DIST)/$(NAME)_{{.OS}}_{{.Arch}}" \
-		main.go
+dist: ## Build operator binaries for all platforms in the Docker build image.
+	mkdir -p $(DIST)
+	docker run --rm \
+		-u $(shell id -u):$(shell id -g) \
+		-v "$(CURDIR):/build" \
+		-v "$(shell go env GOCACHE):/.cache/go-build" \
+		-v "$(shell go env GOPATH):/go" \
+		-e GOPATH=/go \
+		-w /build \
+		$(BUILD_IMAGE) make -j $(shell nproc) dist-operator SHELL=ash
+
+dist-operator: ## Build operator binaries for all platforms.
+	$(MAKE) \
+		dist-operator-linux-amd64 \
+		dist-operator-linux-arm64 \
+		dist-operator-linux-arm
+
+dist-operator-linux-amd64:
+	$(call dist-build,linux,amd64,x86_64-linux-musl-gcc)
+
+dist-operator-linux-arm64:
+	$(call dist-build,linux,arm64,aarch64-linux-musl-gcc)
+
+dist-operator-linux-arm:
+	$(call dist-build,linux,arm,arm-linux-musleabihf-gcc)
+
+define dist-build
+	CGO_ENABLED=1 GOOS=$(1) GOARCH=$(2) CC=$(3) \
+		go build \
+			-tags "$(BUILD_TAGS)" \
+			-ldflags "$(LDFLAGS)" \
+			-trimpath \
+			-o "$(DIST)/$(NAME)_$(1)_$(2)" \
+			main.go
+endef
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-# If you wish built the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: test build ## Build docker image with the manager.
+docker-build: dist ## Build docker image with the manager.
 	docker build -t ${IMG} .
 
 .PHONY: docker-push

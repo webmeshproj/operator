@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/webmeshproj/node/pkg/global"
 	"github.com/webmeshproj/node/pkg/nodecmd"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
@@ -103,18 +102,16 @@ func New(opts Options) (*Config, error) {
 	nodeopts := nodecmd.NewOptions()
 
 	// Global options
-	nodeopts.Global = &global.Options{
-		LogLevel:             groupcfg.LogLevel,
-		TLSCertFile:          fmt.Sprintf(`%s/tls.crt`, opts.CertDir),
-		TLSKeyFile:           fmt.Sprintf(`%s/tls.key`, opts.CertDir),
-		TLSCAFile:            fmt.Sprintf(`%s/ca.crt`, opts.CertDir),
-		MTLS:                 true,
-		VerifyChainOnly:      mesh.Spec.Issuer.Create,
-		NoIPv6:               groupcfg.NoIPv6,
-		DetectEndpoints:      opts.DetectEndpoints,
-		AllowRemoteDetection: opts.AllowRemoteDetection,
-		DetectIPv6:           opts.DetectEndpoints, // TODO: Make this a separate option
-	}
+	nodeopts.Global.LogLevel = groupcfg.LogLevel
+	nodeopts.Global.TLSCertFile = fmt.Sprintf(`%s/tls.crt`, opts.CertDir)
+	nodeopts.Global.TLSKeyFile = fmt.Sprintf(`%s/tls.key`, opts.CertDir)
+	nodeopts.Global.TLSCAFile = fmt.Sprintf(`%s/ca.crt`, opts.CertDir)
+	nodeopts.Global.MTLS = true
+	nodeopts.Global.VerifyChainOnly = mesh.Spec.Issuer.Create
+	nodeopts.Global.NoIPv6 = groupcfg.NoIPv6
+	nodeopts.Global.DetectEndpoints = opts.DetectEndpoints
+	nodeopts.Global.AllowRemoteDetection = opts.AllowRemoteDetection
+	nodeopts.Global.DetectIPv6 = opts.DetectEndpoints // TODO: Make this a separate option
 
 	// Endpoint and zone awareness options
 	zoneAwarenessID := group.GetName()
@@ -141,7 +138,7 @@ func New(opts Options) (*Config, error) {
 		nodeopts.Mesh.Bootstrap.Admin = meshv1.MeshAdminHostname(mesh)
 		nodeopts.Mesh.Bootstrap.IPv4Network = mesh.Spec.IPv4
 		nodeopts.Mesh.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
-		nodeopts.Services.EnableLeaderProxy = true
+		nodeopts.Services.API.LeaderProxy = true
 		nodeopts.Mesh.Bootstrap.AdvertiseAddress = opts.AdvertiseAddress
 		if len(opts.BootstrapVoters) > 0 {
 			sort.Strings(opts.BootstrapVoters)
@@ -174,23 +171,23 @@ func New(opts Options) (*Config, error) {
 
 	// Service options
 	if groupcfg.Services != nil {
-		nodeopts.Services.EnableLeaderProxy = opts.IsBootstrap || groupcfg.Services.EnableLeaderProxy
-		nodeopts.Services.EnableMetrics = groupcfg.Services.Metrics != nil
-		nodeopts.Services.EnableWebRTCAPI = groupcfg.Services.WebRTC != nil
-		nodeopts.Services.EnableMeshDNS = groupcfg.Services.MeshDNS != nil
-		nodeopts.Services.EnableMeshAPI = groupcfg.Services.EnableMeshAPI
-		nodeopts.Services.EnablePeerDiscoveryAPI = groupcfg.Services.EnablePeerDiscoveryAPI
-		nodeopts.Services.EnableAdminAPI = groupcfg.Services.EnableAdminAPI
+		nodeopts.Services.API.LeaderProxy = opts.IsBootstrap || groupcfg.Services.EnableLeaderProxy
+		nodeopts.Services.API.WebRTC = groupcfg.Services.WebRTC != nil
+		nodeopts.Services.API.Mesh = groupcfg.Services.EnableMeshAPI
+		nodeopts.Services.API.PeerDiscovery = groupcfg.Services.EnablePeerDiscoveryAPI
+		nodeopts.Services.API.Admin = groupcfg.Services.EnableAdminAPI
+		nodeopts.Services.MeshDNS.Enabled = groupcfg.Services.MeshDNS != nil
+		nodeopts.Services.Metrics.Enabled = groupcfg.Services.Metrics != nil
 		if groupcfg.Services.Metrics != nil {
-			nodeopts.Services.MetricsListenAddress = groupcfg.Services.Metrics.ListenAddress
-			nodeopts.Services.MetricsPath = groupcfg.Services.Metrics.Path
+			nodeopts.Services.Metrics.ListenAddress = groupcfg.Services.Metrics.ListenAddress
+			nodeopts.Services.Metrics.Path = groupcfg.Services.Metrics.Path
 		}
 		if groupcfg.Services.WebRTC != nil {
-			nodeopts.Services.STUNServers = strings.Join(groupcfg.Services.WebRTC.STUNServers, ",")
+			nodeopts.Services.API.STUNServers = strings.Join(groupcfg.Services.WebRTC.STUNServers, ",")
 		}
 		if groupcfg.Services.MeshDNS != nil {
-			nodeopts.Services.MeshDNSListenUDP = groupcfg.Services.MeshDNS.ListenUDP
-			nodeopts.Services.MeshDNSListenTCP = groupcfg.Services.MeshDNS.ListenTCP
+			nodeopts.Services.MeshDNS.ListenUDP = groupcfg.Services.MeshDNS.ListenUDP
+			nodeopts.Services.MeshDNS.ListenTCP = groupcfg.Services.MeshDNS.ListenTCP
 		}
 	}
 
