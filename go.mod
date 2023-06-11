@@ -7,7 +7,7 @@ require (
 	github.com/cert-manager/cert-manager v1.12.1
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
-	github.com/webmeshproj/node v0.0.0-20230610230653-0516b4a02736
+	github.com/webmeshproj/node v0.0.0-20230611130041-11b41f17f8a4
 	google.golang.org/api v0.111.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.27.2

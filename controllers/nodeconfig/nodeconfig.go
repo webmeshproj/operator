@@ -20,7 +20,6 @@ package nodeconfig
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -68,13 +67,12 @@ type Options struct {
 // Config represents a rendered node group config.
 type Config struct {
 	Options *nodecmd.Options
-	rawjson []byte
 	raw     []byte
 }
 
 // Checksum returns the checksum of the config.
 func (c *Config) Checksum() string {
-	return fmt.Sprintf("%x", sha256.Sum256(c.rawjson))
+	return fmt.Sprintf("%x", sha256.Sum256(c.raw))
 }
 
 // Raw returns the raw config.
@@ -197,13 +195,8 @@ func New(opts Options) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal config: %w", err)
 	}
-	j, err := json.Marshal(nodeopts)
-	if err != nil {
-		return nil, fmt.Errorf("marshal config: %w", err)
-	}
 	return &Config{
 		Options: nodeopts,
-		rawjson: j,
 		raw:     buf.Bytes(),
 	}, nil
 }

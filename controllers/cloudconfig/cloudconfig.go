@@ -21,7 +21,6 @@ package cloudconfig
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
 	"text/template"
 
@@ -34,13 +33,12 @@ import (
 // Config represents a rendered cloud config.
 type Config struct {
 	// Raw is the raw cloud config.
-	raw     []byte
-	rawJSON []byte
+	raw []byte
 }
 
 // Checksum returns the checksum of the config.
 func (c *Config) Checksum() string {
-	return fmt.Sprintf("%x", sha256.Sum256(c.rawJSON))
+	return fmt.Sprintf("%x", sha256.Sum256(c.raw))
 }
 
 // Raw returns the raw config.
@@ -136,13 +134,8 @@ func New(opts Options) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	js, err := json.Marshal(out)
-	if err != nil {
-		return nil, err
-	}
 	return &Config{
-		raw:     append([]byte("#cloud-config\n\n"), buf.Bytes()...),
-		rawJSON: js,
+		raw: append([]byte("#cloud-config\n\n"), buf.Bytes()...),
 	}, nil
 }
 
