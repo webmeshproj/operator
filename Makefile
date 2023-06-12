@@ -58,6 +58,10 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
+lint: ## Run linters.
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	golangci-lint run
+
 ##@ Build
 
 NAME        := operator
@@ -84,7 +88,7 @@ build: fmt vet generate ## Build operator binary.
 		main.go
 
 BUILD_IMAGE ?= ghcr.io/webmeshproj/operator-build:latest
-build-image: ## Build the node build image.
+build-image: ## Build the operator build image.
 	docker buildx build -t $(BUILD_IMAGE) -f Dockerfile.build --load .
 
 .PHONY: dist

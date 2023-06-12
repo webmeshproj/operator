@@ -192,10 +192,8 @@ func NodeGroupLabels(mesh *Mesh, group *NodeGroup) map[string]string {
 	for k, v := range NodeGroupSelector(mesh, group) {
 		labels[k] = v
 	}
-	if groupLabels != nil {
-		for k, v := range groupLabels {
-			labels[k] = v
-		}
+	for k, v := range groupLabels {
+		labels[k] = v
 	}
 	return labels
 }

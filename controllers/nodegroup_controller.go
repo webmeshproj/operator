@@ -138,7 +138,6 @@ func (r *NodeGroupReconciler) reconcileDelete(ctx context.Context, group *meshv1
 				if client.IgnoreNotFound(err) != nil {
 					return fmt.Errorf("unable to fetch PVC: %w", err)
 				}
-				err = nil
 				continue
 			}
 			if err = r.Delete(ctx, &pvc); err != nil {

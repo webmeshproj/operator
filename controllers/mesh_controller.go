@@ -48,7 +48,7 @@ type MeshReconciler struct {
 }
 
 // TODO: Lookup referenced groups and delete them too
-const meshesForegroundDeletion = "meshes.mesh.webmesh.io"
+// const meshesForegroundDeletion = "meshes.mesh.webmesh.io"
 
 //+kubebuilder:rbac:groups="",resources=services;secrets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cert-manager.io,resources=clusterissuers;issuers;certificates,verbs=get;list;watch;create;update;patch;delete
