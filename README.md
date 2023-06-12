@@ -47,7 +47,7 @@ operator-controller-manager-67cc849c6-7nlbk   1/1     Running   0          55s
 ```
 
 Example manifests can be found in the [`config/samples`](config/samples/) directory.
-To bootstrap a new mesh, you can create a `WebMesh` resource:
+To bootstrap a new mesh, you can create a `Mesh` resource:
 
 ```bash
 $ kubectl apply -f config/samples/mesh_v1_mesh.yaml
