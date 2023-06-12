@@ -208,8 +208,6 @@ create-k3d:
 	k3d cluster create $(CLUSTER_NAME) \
 		--port "8443:8443@loadbalancer" \
 		--port "51820:51820/udp@loadbalancer" \
-		--port "51821:51821/udp@loadbalancer" \
-		--port "51822:51822/udp@loadbalancer" \
 		--k3s-arg "--disable=traefik@server:0" \
 		--servers 1
 

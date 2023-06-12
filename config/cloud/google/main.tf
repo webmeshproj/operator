@@ -260,6 +260,8 @@ resource "google_compute_firewall" "routers_ipv6" {
   target_tags   = ["mesh-nodes"]
 }
 
+# IAP Tunnel Access
+
 resource "google_compute_firewall" "iap_tcp" {
   count       = var.email != "" ? 1 : 0
   project     = var.project_id
@@ -275,8 +277,6 @@ resource "google_compute_firewall" "iap_tcp" {
   direction     = "INGRESS"
   source_ranges = ["35.235.240.0/20"]
 }
-
-# IAP Tunnel Access
 
 resource "google_iap_tunnel_iam_binding" "tcp_access" {
   count   = var.email != "" ? 1 : 0

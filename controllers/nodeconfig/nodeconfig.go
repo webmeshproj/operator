@@ -120,7 +120,7 @@ func New(opts Options) (*Config, error) {
 	nodeopts.Mesh.Mesh.PrimaryEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
 		sort.Strings(opts.WireGuardEndpoints)
-		nodeopts.Mesh.Mesh.WireGuardEndpoints = strings.Join(opts.WireGuardEndpoints, ",")
+		nodeopts.Mesh.Mesh.WireGuardEndpoints = opts.WireGuardEndpoints
 	}
 
 	// WireGuard options
