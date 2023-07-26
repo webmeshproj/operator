@@ -59,8 +59,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 lint: ## Run linters.
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	golangci-lint run
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run
 
 ##@ Build
 
@@ -69,7 +68,7 @@ VERSION_PKG := github.com/webmeshproj/$(NAME)/controllers/version
 VERSION     := $(shell git describe --tags --always --dirty)
 COMMIT      := $(shell git rev-parse HEAD)
 DATE        := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS     ?= -s -w -extldflags=-static \
+LDFLAGS     ?= -s -w \
 			   -X $(VERSION_PKG).Version=$(VERSION) \
 			   -X $(VERSION_PKG).Commit=$(COMMIT) \
 			   -X $(VERSION_PKG).BuildDate=$(DATE)
@@ -87,54 +86,33 @@ build: fmt vet generate ## Build operator binary.
 		-o "$(DIST)/$(NAME)_$(OS)_$(ARCH)" \
 		main.go
 
-BUILD_IMAGE ?= ghcr.io/webmeshproj/operator-build:latest
-build-image: ## Build the operator build image.
-	docker buildx build -t $(BUILD_IMAGE) -f Dockerfile.build --load .
+DIST_ARCHS    := amd64 arm64 arm s390x ppc64le
+DIST_PARALLEL ?= -1
+DIST_TEMPLATE := {{.Dir}}_{{.OS}}_{{.Arch}}
 
 .PHONY: dist
-dist: ## Build operator binaries for all platforms in the Docker build image.
-	mkdir -p $(DIST)
-	docker run --rm \
-		-u $(shell id -u):$(shell id -g) \
-		-v "$(CURDIR):/build" \
-		-v "$(shell go env GOCACHE):/.cache/go-build" \
-		-v "$(shell go env GOPATH):/go" \
-		-e GOPATH=/go \
-		-w /build \
-		$(BUILD_IMAGE) make -j $(shell nproc) dist-operator SHELL=ash
-
-dist-operator: ## Build operator binaries for all platforms.
-	$(MAKE) \
-		dist-operator-linux-amd64 \
-		dist-operator-linux-arm64 \
-		dist-operator-linux-arm
-
-dist-operator-linux-amd64:
-	$(call dist-build,linux,amd64,x86_64-linux-musl-gcc)
-
-dist-operator-linux-arm64:
-	$(call dist-build,linux,arm64,aarch64-linux-musl-gcc)
-
-dist-operator-linux-arm:
-	$(call dist-build,linux,arm,arm-linux-musleabihf-gcc)
-
-define dist-build
-	CGO_ENABLED=1 GOOS=$(1) GOARCH=$(2) CC=$(3) \
-		go build \
-			-tags "$(BUILD_TAGS)" \
-			-ldflags "$(LDFLAGS)" \
-			-trimpath \
-			-o "$(DIST)/$(NAME)_$(1)_$(2)" \
-			main.go
-endef
+dist: ## Build operator binaries for all platforms.
+	go run github.com/mitchellh/gox@latest \
+		-os="linux" \
+		-arch="$(DIST_ARCHS)" \
+		-tags "$(BUILD_TAGS)" \
+		-ldflags "$(LDFLAGS)" \
+		-parallel="$(DIST_PARALLEL)" \
+		-output="$(DIST)/$(DIST_TEMPLATE)" \
+		github.com/webmeshproj/operator
+	# We can compress all but the s390x binaries.
+	upx --best --lzma \
+		$(DIST)/*_linux_amd64 \
+		$(DIST)/*_linux_arm* \
+		$(DIST)/*_linux_ppc64le \
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
 .PHONY: docker-build
-docker-build: dist ## Build docker image with the manager.
-	docker build -t ${IMG} .
+docker-build: build ## Build docker image with the manager.
+	docker build -t ${IMG} --build-arg TARGETOS=$(OS) --build-arg TARGETARCH=$(ARCH) .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.

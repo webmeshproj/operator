@@ -4,8 +4,7 @@ FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 USER 65532:65532
 
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
+ARG TARGETOS TARGETARCH
 ADD dist/operator_${TARGETOS}_${TARGETARCH} /operator
 
 ENTRYPOINT ["/operator"]

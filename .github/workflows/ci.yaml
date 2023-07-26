@@ -9,11 +9,12 @@ on:
 env:
   IMAGE_NAME: ghcr.io/webmeshproj/operator
   GO_VERSION: ^1.20
-  PLATFORMS: linux/amd64,linux/arm64,linux/arm
+  GOLANGCI_LINT_VERSION: v1.53.2
+  DOCKER_PLATFORMS: linux/amd64,linux/arm64,linux/arm,linux/ppc64le,linux/s390x
 
 jobs:
-  tests:
-    name: Unit Tests
+  lint:
+    name: Static Analysis
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
@@ -32,14 +33,43 @@ jobs:
         shell: bash
         run: go mod download -x
 
-      - name: Run linting
+      - name: Run Linting
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.53.2
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --timeout 10m
           skip-pkg-cache: true
 
-  build-publish:
+  tests:
+    name: Unit Tests
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: "read"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: go.sum
+
+      - name: Download Go Modules
+        shell: bash
+        run: go mod download -x
+
+      - name: Run Unit Tests
+        shell: bash
+        run: make test
+
+  build:
     name: Build and Publish Artifacts
     runs-on: ubuntu-latest
     needs: [tests]
@@ -73,20 +103,9 @@ jobs:
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build Cross Compiler Image
-        uses: docker/build-push-action@v3
-        with:
-          file: Dockerfile.build
-          tags: ghcr.io/webmeshproj/operator-build:latest
-          load: true
-          cache-to: type=gha
-          cache-from: type=gha
-
       - name: Build Release Binaries
         shell: bash
-        env:
-          BUILD_IMAGE: ghcr.io/webmeshproj/operator-build:latest
-        run: make dist
+        run: make dist DIST_PARALLEL=2
 
       - name: Login to GHCR
         uses: docker/login-action@v2
@@ -107,15 +126,13 @@ jobs:
           echo "images=${IMAGES}" >> "${GITHUB_OUTPUT}"
 
       - name: Build and Push Images
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v4
         id: build
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.tags.outputs.images }}
-          platforms: ${{ env.PLATFORMS }}
-          cache-to: type=gha
-          cache-from: type=gha
+          platforms: ${{ env.DOCKER_PLATFORMS }}
 
       - name: Sign Images
         shell: bash
