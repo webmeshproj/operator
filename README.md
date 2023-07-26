@@ -1,6 +1,6 @@
 # Webmesh Operator
 
-The repository contains an operator running [Webmesh nodes](https://github.com/webmeshproj/node) on Kubernetes.
+The repository contains an operator for running [Webmesh nodes](https://github.com/webmeshproj/node) on Kubernetes.
 
 ## Getting started
 
