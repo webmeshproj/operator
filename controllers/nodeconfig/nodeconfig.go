@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/webmeshproj/node/pkg/nodecmd"
+	"github.com/webmeshproj/webmesh/pkg/nodecmd"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
