@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/webmeshproj/webmesh/pkg/nodecmd"
+	"github.com/webmeshproj/webmesh/pkg/cmd/nodecmd"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -138,17 +138,10 @@ func New(opts Options) (*Config, error) {
 		nodeopts.Mesh.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
 		nodeopts.Services.API.LeaderProxy = true
 		nodeopts.Mesh.Bootstrap.AdvertiseAddress = opts.AdvertiseAddress
+		nodeopts.Mesh.Bootstrap.Servers = opts.BootstrapServers
 		if len(opts.BootstrapVoters) > 0 {
 			sort.Strings(opts.BootstrapVoters)
 			nodeopts.Mesh.Bootstrap.Voters = strings.Join(opts.BootstrapVoters, ",")
-		}
-		if len(opts.BootstrapServers) > 0 {
-			var bootstrapServers sort.StringSlice
-			for name, addr := range opts.BootstrapServers {
-				bootstrapServers = append(bootstrapServers, fmt.Sprintf("%s=%s", name, addr))
-			}
-			sort.Sort(bootstrapServers)
-			nodeopts.Mesh.Bootstrap.Servers = strings.Join(bootstrapServers, ",")
 		}
 	} else {
 		if opts.JoinServer == "" {

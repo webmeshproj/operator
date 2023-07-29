@@ -7,7 +7,7 @@ require (
 	github.com/cert-manager/cert-manager v1.12.1
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
-	github.com/webmeshproj/webmesh v0.0.21
+	github.com/webmeshproj/webmesh v0.0.22
 	google.golang.org/api v0.111.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.27.2
@@ -62,6 +62,7 @@ require (
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/hashicorp/golang-lru v0.5.1 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.4 // indirect
 	github.com/hashicorp/raft v1.5.0 // indirect
 	github.com/imdario/mergo v0.3.15 // indirect
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
@@ -113,13 +114,13 @@ require (
 	github.com/vishvananda/netlink v1.0.0 // indirect
 	github.com/vishvananda/netns v0.0.0-20190625233234-7109fa855b0f // indirect
 	github.com/webmeshproj/api v0.2.0 // indirect
-	github.com/webmeshproj/raft-badger v0.0.0-20230726000837-2c984b2835ec // indirect
+	github.com/webmeshproj/raft-badger v0.0.0-20230728220038-2f75bbd4d5ed // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
-	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090 // indirect
+	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691 // indirect
 	golang.org/x/mod v0.11.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/oauth2 v0.6.0 // indirect
