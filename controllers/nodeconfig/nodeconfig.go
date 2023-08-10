@@ -136,7 +136,6 @@ func New(opts Options) (*Config, error) {
 		nodeopts.Mesh.Bootstrap.Admin = meshv1.MeshAdminHostname(mesh)
 		nodeopts.Mesh.Bootstrap.IPv4Network = mesh.Spec.IPv4
 		nodeopts.Mesh.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
-		nodeopts.Services.API.LeaderProxy = true
 		nodeopts.Mesh.Bootstrap.AdvertiseAddress = opts.AdvertiseAddress
 		nodeopts.Mesh.Bootstrap.Servers = opts.BootstrapServers
 		if len(opts.BootstrapVoters) > 0 {
@@ -162,7 +161,6 @@ func New(opts Options) (*Config, error) {
 
 	// Service options
 	if groupcfg.Services != nil {
-		nodeopts.Services.API.LeaderProxy = opts.IsBootstrap || groupcfg.Services.EnableLeaderProxy
 		nodeopts.Services.API.WebRTC = groupcfg.Services.WebRTC != nil
 		nodeopts.Services.API.Mesh = groupcfg.Services.EnableMeshAPI
 		nodeopts.Services.API.PeerDiscovery = groupcfg.Services.EnablePeerDiscoveryAPI
