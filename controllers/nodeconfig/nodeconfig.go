@@ -18,14 +18,12 @@ limitations under the License.
 package nodeconfig
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
-	"github.com/webmeshproj/webmesh/pkg/cmd/nodecmd"
+	"github.com/webmeshproj/webmesh/pkg/config"
 
 	meshv1 "github.com/webmeshproj/operator/api/v1"
 )
@@ -66,7 +64,7 @@ type Options struct {
 
 // Config represents a rendered node group config.
 type Config struct {
-	Options *nodecmd.Options
+	Options *config.Config
 	raw     []byte
 }
 
@@ -97,7 +95,7 @@ func New(opts Options) (*Config, error) {
 		}
 		groupcfg = configGroup.Merge(groupcfg)
 	}
-	nodeopts := nodecmd.NewOptions()
+	nodeopts := config.NewDefaultConfig("")
 
 	// Global options
 	nodeopts.Global.LogLevel = groupcfg.LogLevel
@@ -106,7 +104,7 @@ func New(opts Options) (*Config, error) {
 	nodeopts.Global.TLSCAFile = fmt.Sprintf(`%s/ca.crt`, opts.CertDir)
 	nodeopts.Global.MTLS = true
 	nodeopts.Global.VerifyChainOnly = mesh.Spec.Issuer.Create
-	nodeopts.Global.NoIPv6 = groupcfg.NoIPv6
+	nodeopts.Global.DisableIPv6 = groupcfg.NoIPv6
 	nodeopts.Global.DetectEndpoints = opts.DetectEndpoints
 	nodeopts.Global.AllowRemoteDetection = opts.AllowRemoteDetection
 	nodeopts.Global.DetectIPv6 = opts.DetectEndpoints // TODO: Make this a separate option
@@ -116,55 +114,53 @@ func New(opts Options) (*Config, error) {
 	if id, ok := group.Labels[meshv1.ZoneAwarenessLabel]; ok {
 		zoneAwarenessID = id
 	}
-	nodeopts.Mesh.Mesh.ZoneAwarenessID = zoneAwarenessID
-	nodeopts.Mesh.Mesh.PrimaryEndpoint = opts.PrimaryEndpoint
+	nodeopts.Mesh.ZoneAwarenessID = zoneAwarenessID
+	nodeopts.Mesh.PrimaryEndpoint = opts.PrimaryEndpoint
 	if len(opts.WireGuardEndpoints) > 0 {
 		sort.Strings(opts.WireGuardEndpoints)
-		nodeopts.Mesh.WireGuard.Endpoints = opts.WireGuardEndpoints
+		nodeopts.WireGuard.Endpoints = opts.WireGuardEndpoints
 	}
 
 	// WireGuard options
-	nodeopts.Mesh.WireGuard.PersistentKeepAlive = opts.PersistentKeepalive
-	nodeopts.Mesh.WireGuard.ForceInterfaceName = true
+	nodeopts.WireGuard.PersistentKeepAlive = opts.PersistentKeepalive
+	nodeopts.WireGuard.ForceInterfaceName = true
 	if opts.WireGuardListenPort > 0 {
-		nodeopts.Mesh.WireGuard.ListenPort = opts.WireGuardListenPort
+		nodeopts.WireGuard.ListenPort = opts.WireGuardListenPort
 	}
 
 	// Bootstrap options
 	if opts.IsBootstrap {
-		nodeopts.Mesh.Bootstrap.Enabled = true
-		nodeopts.Mesh.Bootstrap.Admin = meshv1.MeshAdminHostname(mesh)
-		nodeopts.Mesh.Bootstrap.IPv4Network = mesh.Spec.IPv4
-		nodeopts.Mesh.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
-		nodeopts.Mesh.Bootstrap.AdvertiseAddress = opts.AdvertiseAddress
-		nodeopts.Mesh.Bootstrap.Servers = opts.BootstrapServers
+		nodeopts.Bootstrap.Enabled = true
+		nodeopts.Bootstrap.Admin = meshv1.MeshAdminHostname(mesh)
+		nodeopts.Bootstrap.IPv4Network = mesh.Spec.IPv4
+		nodeopts.Bootstrap.DefaultNetworkPolicy = string(mesh.Spec.DefaultNetworkPolicy)
+		nodeopts.Bootstrap.Transport.TCPAdvertiseAddress = opts.AdvertiseAddress
+		nodeopts.Bootstrap.Transport.TCPServers = opts.BootstrapServers
 		if len(opts.BootstrapVoters) > 0 {
 			sort.Strings(opts.BootstrapVoters)
-			nodeopts.Mesh.Bootstrap.Voters = strings.Join(opts.BootstrapVoters, ",")
+			nodeopts.Bootstrap.Voters = opts.BootstrapVoters
 		}
 	} else {
 		if opts.JoinServer == "" {
 			return nil, fmt.Errorf("join server is required for non bootstrap node groups")
 		}
-		nodeopts.Mesh.Mesh.JoinAddress = opts.JoinServer
-		nodeopts.Mesh.Mesh.JoinAsVoter = groupcfg.Voter
-		nodeopts.Mesh.Raft.LeaveOnShutdown = true // TODO: Make these separate options
+		nodeopts.Mesh.JoinAddress = opts.JoinServer
+		nodeopts.Raft.RequestVote = groupcfg.Voter
 	}
 
 	// Storage options
 	if opts.IsPersistent {
-		nodeopts.Mesh.Raft.DataDir = meshv1.DefaultDataDirectory
+		nodeopts.Raft.DataDir = meshv1.DefaultDataDirectory
 	} else {
-		nodeopts.Mesh.Raft.DataDir = ""
-		nodeopts.Mesh.Raft.InMemory = true
+		nodeopts.Raft.DataDir = ""
+		nodeopts.Raft.InMemory = true
 	}
 
 	// Service options
 	if groupcfg.Services != nil {
-		nodeopts.Services.API.WebRTC = groupcfg.Services.WebRTC != nil
-		nodeopts.Services.API.Mesh = groupcfg.Services.EnableMeshAPI
-		nodeopts.Services.API.PeerDiscovery = groupcfg.Services.EnablePeerDiscoveryAPI
-		nodeopts.Services.API.Admin = groupcfg.Services.EnableAdminAPI
+		nodeopts.Services.WebRTC.Enabled = groupcfg.Services.WebRTC != nil
+		nodeopts.Services.API.MeshEnabled = groupcfg.Services.EnableMeshAPI
+		nodeopts.Services.API.AdminEnabled = groupcfg.Services.EnableAdminAPI
 		nodeopts.Services.MeshDNS.Enabled = groupcfg.Services.MeshDNS != nil
 		nodeopts.Services.Metrics.Enabled = groupcfg.Services.Metrics != nil
 		if groupcfg.Services.Metrics != nil {
@@ -172,7 +168,7 @@ func New(opts Options) (*Config, error) {
 			nodeopts.Services.Metrics.Path = groupcfg.Services.Metrics.Path
 		}
 		if groupcfg.Services.WebRTC != nil {
-			nodeopts.Services.API.STUNServers = strings.Join(groupcfg.Services.WebRTC.STUNServers, ",")
+			nodeopts.Services.WebRTC.STUNServers = groupcfg.Services.WebRTC.STUNServers
 		}
 		if groupcfg.Services.MeshDNS != nil {
 			nodeopts.Services.MeshDNS.ListenUDP = groupcfg.Services.MeshDNS.ListenUDP
@@ -181,13 +177,12 @@ func New(opts Options) (*Config, error) {
 	}
 
 	// Build the config
-	var buf bytes.Buffer
-	err := nodeopts.MarshalTo(&buf)
+	out, err := nodeopts.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("marshal config: %w", err)
 	}
 	return &Config{
-		Options: nodeopts,
-		raw:     buf.Bytes(),
+		Options: &nodeopts,
+		raw:     out,
 	}, nil
 }
